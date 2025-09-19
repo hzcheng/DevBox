@@ -1,0 +1,48 @@
+{
+    // For format details, see https://aka.ms/devcontainer.json. For config options, see the README at:
+    // https://github.com/microsoft/vscode-dev-containers/tree/v0.241.1/containers/docker-from-docker-compose
+    "name": "develop-ubuntu-22.04-1",
+    "dockerComposeFile": "../docker-compose.yml",
+    "service": "ubuntu-22.04",
+    "workspaceFolder": "/workspace",
+    "remoteEnv": {
+        "LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}"
+    },
+    "containerEnv": {
+        "ASAN_OPTIONS": "abort_on_error=1:disable_coredump=0:unmap_shadow_on_exit=1",
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-vscode.cpptools",
+                "ms-vscode.cmake-tools",
+                "visualstudioexptteam.vscodeintel",
+                "eamodio.gitlens",
+                "matepek.vscode-catch2-test-adapter",
+                "spmeesseman.vscode-taskexplorer",
+                "urosvujosevic.explorer-manager",
+                "mhutchie.git-graph",
+                "ms-python.python",
+                "github.copilot",
+                "twxs.cmake",
+                "github.vscode-pull-request-github",
+                "llvm-vs-code-extensions.vscode-clangd",
+                "liangqin.quick-notes",
+                "ritwickdey.liveserver",
+                "bierner.markdown-checkbox",
+                "yzhang.markdown-all-in-one",
+                "ms-toolsai.jupyter",
+                "natizyskunk.sftp",
+                "streetsidesoftware.code-spell-checker",
+                "ms-python.autopep8",
+                "ms-azuretools.vscode-docker",
+                "cweijan.vscode-typora"
+            ]
+        }
+    },
+    "shutdownAction": "none",
+    "postCreateCommand": [
+        // "/usr/bin/python3.10 -m pip install taospy numpy fabric2 psutil pandas toml distro faker taos-ws-py gprof2dot"
+    ],
+    "remoteUser": "root"
+}
