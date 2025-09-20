@@ -1,10 +1,13 @@
 name: ${PROJECT_NAME}
 
 services:
-  ubuntu-22.04:
+  devbox:
     build: 
       context: ./ubuntu-22.04
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.${ARCH}
+      args:
+        - PROXY=${PROXY}
+    image: devbox-ubuntu-22.04:${ARCH}
     container_name: ${PROJECT_NAME}-ubuntu-22.04
     restart: unless-stopped
     ulimits:

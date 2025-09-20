@@ -1,14 +1,18 @@
-# docker build --no-cache -t hzcheng/ubuntu:22.04.x86_64 -f ./docker/Dockerfile.ubuntu-22.04.x86_64 .
-# docker run -it --rm hzcheng/ubuntu:22.04.x86_64 bash
+# docker build --no-cache -t hzcheng/ubuntu:22.04.arm64 -f ./docker/Dockerfile.ubuntu-22.04.arm64 .
+# docker run -it --rm hzcheng/ubuntu:22.04.arm64 bash
 
 # Base image
 FROM mcr.microsoft.com/vscode/devcontainers/cpp:ubuntu-22.04
 
+# Change timezone
+ENV TZ="Asia/Shanghai"
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
 # Change source list
 RUN mv /etc/apt/sources.list /etc/apt/sources.list.bak && \
-    echo "deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ jammy main restricted universe multiverse" > /etc/apt/sources.list && \
-    echo "deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ jammy-updates main restricted universe multiverse" >> /etc/apt/sources.list && \
-    echo "deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ jammy-backports main restricted universe multiverse" >> /etc/apt/sources.list 
+    echo "deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ jammy main restricted universe multiverse" > /etc/apt/sources.list && \
+    echo "deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ jammy-updates main restricted universe multiverse" >> /etc/apt/sources.list && \
+    echo "deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ jammy-backports main restricted universe multiverse" >> /etc/apt/sources.list
 
 # Install common dependencies
 RUN export DEBIAN_FRONTEND=noninteractive && \

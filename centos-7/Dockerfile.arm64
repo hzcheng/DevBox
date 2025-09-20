@@ -1,0 +1,49 @@
+# docker build --no-cache -t hzcheng/centos:7.arm64 -f ./docker/Dockerfile.centos7.arm64 .
+# docker run -it --rm hzcheng/centos:7.arm64 bash
+# docker run -it --rm -v /mnt/workspace/TDengine:/root/workspace/TDengine hzcheng/centos:7.arm64 bash
+
+# Base image
+FROM my-centos-systemd:local
+
+# Use directory /root
+WORKDIR /root
+
+# Change timezone
+RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+    echo "Asia/Shanghai" > /etc/timezone
+
+# # Change source list
+# RUN mkdir -p /etc/yum.repos.d/bak && \
+#     mv /etc/yum.repos.d/*.repo /etc/yum.repos.d/bak/ && \
+#     curl -o /etc/yum.repos.d/CentOS-Base.repo http://mirrors.aliyun.com/repo/Centos-7.repo && \
+#     yum clean all && \
+#     yum makecache
+
+# # Install dependencies
+# RUN yum install -y epel-release && \
+#     yum update -y && \
+#     yum install -y gcc gcc-c++ make gflags git openssl-devel wget lbzip2 perl-IPC-Cmd
+
+# # Install latest CMake for arm64
+# RUN yum remove -y cmake cmake3 && \
+#     CMAKE_VERSION=3.31.6 && \
+#     wget https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-Linux-aarch64.tar.gz && \
+#     tar -xzvf cmake-${CMAKE_VERSION}-Linux-aarch64.tar.gz --strip-components=1 -C /usr/local && \
+#     rm -f cmake-${CMAKE_VERSION}-Linux-aarch64.tar.gz && \
+#     ln -sf /usr/local/bin/cmake /usr/bin/cmake
+
+# # Upgrade gcc to use gcc 11
+# RUN GCC_VERSION=9.3.0 && \
+#     GCC_DIR=gcc-${GCC_VERSION} && \
+#     GCC_TAR=${GCC_DIR}.tar.gz && \
+#     wget https://ftp.gnu.org/gnu/gcc/gcc-${GCC_VERSION}/${GCC_TAR} && \
+#     tar -xvf ${GCC_TAR} && \
+#     rm -f ${GCC_TAR} && \
+#     cd ${GCC_DIR} && \
+#     ./contrib/download_prerequisites && \
+#     mkdir build && cd build && \
+#     ../configure --enable-languages=c,c++ --disable-multilib --prefix=/usr/local/gcc-${GCC_VERSION} && \
+#     make -j $(nproc) && make install && \
+#     cd ../.. && rm -rf ${GCC_DIR} && \
+#     ln -sf /usr/local/gcc-${GCC_VERSION}/bin/* /usr/bin/ && \
+#     ln -sf /usr/local/gcc-${GCC_VERSION}/lib64/* /usr/lib64/

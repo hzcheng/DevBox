@@ -1,9 +1,9 @@
 {
     // For format details, see https://aka.ms/devcontainer.json. For config options, see the README at:
     // https://github.com/microsoft/vscode-dev-containers/tree/v0.241.1/containers/docker-from-docker-compose
-    "name": "develop-ubuntu-22.04-1",
+    "name": "DevBox",
     "dockerComposeFile": "../docker-compose.yml",
-    "service": "ubuntu-22.04",
+    "service": "devbox",
     "workspaceFolder": "/workspace",
     "remoteEnv": {
         "LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}"
@@ -42,7 +42,10 @@
     },
     "shutdownAction": "none",
     "postCreateCommand": [
-        // "/usr/bin/python3.10 -m pip install taospy numpy fabric2 psutil pandas toml distro faker taos-ws-py gprof2dot"
+        "pip3 install --upgrade pip"
+        // "pip3 install numpy fabric2 psutil pandas toml distro",
+        // "pip3 install numpy faker gprof2dot tzlocal matplotlib",
+        // "pip3 install ipykernel taos-ws-py taospy baostock tushare"
     ],
     "remoteUser": "root"
 }
