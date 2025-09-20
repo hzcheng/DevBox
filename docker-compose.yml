@@ -22,6 +22,7 @@ services:
       - projects:/root/workspace/
     environment:
       - TZ=Asia/Shanghai
+      - all_proxy=${PROXY}
     command: bash
     security_opt:
       - seccomp:unconfined
