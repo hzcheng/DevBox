@@ -3,12 +3,12 @@ name: ${PROJECT_NAME}
 services:
   devbox:
     build: 
-      context: ./ubuntu-22.04
+      context: ./devbox
       dockerfile: Dockerfile.${ARCH}
       args:
         - PROXY=${PROXY}
-    image: devbox-ubuntu-22.04:${ARCH}
-    container_name: ${PROJECT_NAME}-ubuntu-22.04
+    image: devbox:${ARCH}
+    container_name: ${PROJECT_NAME}-devbox
     restart: unless-stopped
     ulimits:
       core:
@@ -26,11 +26,25 @@ services:
     environment:
       - TZ=Asia/Shanghai
       - all_proxy=${PROXY}
+      - ASAN_OPTIONS=abort_on_error=1:disable_coredump=0:unmap_shadow_on_exit=1
     command: bash
     security_opt:
       - seccomp:unconfined
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+  relbox:
+    build:
+      context: ./relbox
+      dockerfile: Dockerfile.${ARCH}
+    image: relbox:${ARCH}
+    container_name: ${PROJECT_NAME}-relbox
+    restart: unless-stopped
+    tty: true
+    volumes:
+      - projects:/root/workspace/
+    environment:
+      - TZ=Asia/Shanghai
 
 volumes:
   projects:

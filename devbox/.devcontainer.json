@@ -8,9 +8,6 @@
     "remoteEnv": {
         "LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}"
     },
-    "containerEnv": {
-        "ASAN_OPTIONS": "abort_on_error=1:disable_coredump=0:unmap_shadow_on_exit=1",
-    },
     "customizations": {
         "vscode": {
             "extensions": [
@@ -42,7 +39,7 @@
     },
     "shutdownAction": "none",
     "postCreateCommand": [
-        "pip3 install --upgrade pip"
+        // "pip3 install --upgrade pip"
         // "pip3 install numpy fabric2 psutil pandas toml distro",
         // "pip3 install numpy faker gprof2dot tzlocal matplotlib",
         // "pip3 install ipykernel taos-ws-py taospy baostock tushare"
