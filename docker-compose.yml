@@ -19,12 +19,13 @@ services:
       - SYS_ADMIN
     tty: true
     volumes:
-      # Forwards the local Docker socket to the container.
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock # for docker-in-docker
+      - vscode_server:/root/.vscode-server:cached
       - .:/workspace:cached
       - projects:/root/workspace/
     environment:
       - TZ=Asia/Shanghai
+      - DOCKER_BUILDKIT=1
       - all_proxy=${PROXY}
       - ASAN_OPTIONS=abort_on_error=1:disable_coredump=0:unmap_shadow_on_exit=1
     command: bash
@@ -49,5 +50,6 @@ services:
 volumes:
   projects:
     external: true
+  vscode_server:
 
     
