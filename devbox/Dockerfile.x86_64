@@ -57,5 +57,7 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
         faker gprof2dot tzlocal matplotlib \
         ipykernel taos-ws-py taospy baostock tushare
 
+COPY ./tmux.conf /root/.tmux.conf
+
 # # RUN apt-get install -y --no-install-recommends openssh-server golang openjdk-11-jdk \
 # #         redis-tools mysql-client postgresql-client && \
