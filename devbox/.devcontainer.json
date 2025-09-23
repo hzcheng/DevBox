@@ -33,7 +33,8 @@
                 "streetsidesoftware.code-spell-checker",
                 "ms-python.autopep8",
                 "ms-azuretools.vscode-docker",
-                "cweijan.vscode-typora"
+                "cweijan.vscode-typora",
+                "formulahendry.code-runner"
             ]
         }
     },
