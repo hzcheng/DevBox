@@ -34,7 +34,8 @@
                 "ms-python.autopep8",
                 "ms-azuretools.vscode-docker",
                 "cweijan.vscode-typora",
-                "formulahendry.code-runner"
+                "formulahendry.code-runner",
+                "saoudrizwan.claude-dev"
             ]
         }
     },
