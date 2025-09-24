@@ -59,5 +59,7 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
 
 COPY ./tmux.conf /root/.tmux.conf
 
+RUN apt-get install -y docker-buildx-plugin
+
 # # RUN apt-get install -y --no-install-recommends openssh-server golang openjdk-11-jdk \
 # #         redis-tools mysql-client postgresql-client && \
