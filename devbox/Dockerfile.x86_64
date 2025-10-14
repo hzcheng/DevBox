@@ -4,11 +4,6 @@
 # Base image
 FROM mcr.microsoft.com/vscode/devcontainers/cpp:ubuntu-22.04
 
-ARG PROXY=
-
-ENV http_proxy=$PROXY
-ENV https_proxy=$PROXY
-
 # Change source list
 RUN mv /etc/apt/sources.list /etc/apt/sources.list.bak && \
     echo "deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ jammy main restricted universe multiverse" > /etc/apt/sources.list && \
@@ -29,11 +24,12 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
     curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg && \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null && \
     # Update package lists
-    apt-get update
+    apt-get update --fix-missing
 
 # Install packages
 RUN apt-get -y install --no-install-recommends \
-        tree vim tmux python3-pip tldr patchelf docker-ce-cli docker-compose-plugin\
+        tree vim tmux python3-pip tldr patchelf \
+        docker-ce-cli docker-compose-plugin docker-buildx-plugin \
         libjansson-dev libsnappy-dev \
         liblzma-dev libz-dev pkg-config libssl-dev graphviz \
         && \
@@ -59,7 +55,5 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
 
 COPY ./tmux.conf /root/.tmux.conf
 
-RUN apt-get install -y docker-buildx-plugin
-
-# # RUN apt-get install -y --no-install-recommends openssh-server golang openjdk-11-jdk \
-# #         redis-tools mysql-client postgresql-client && \
+# RUN apt-get install -y --no-install-recommends openssh-server golang openjdk-11-jdk \
+#         redis-tools mysql-client postgresql-client && \

@@ -5,8 +5,6 @@ services:
     build: 
       context: ./devbox
       dockerfile: Dockerfile.${ARCH}
-      args:
-        - PROXY=${PROXY}
     image: devbox:${ARCH}
     container_name: ${PROJECT_NAME}-devbox
     restart: unless-stopped
@@ -28,6 +26,8 @@ services:
       - DOCKER_BUILDKIT=1
       - all_proxy=${PROXY}
       - ASAN_OPTIONS=abort_on_error=1:disable_coredump=0:unmap_shadow_on_exit=1
+      - http_proxy=${PROXY}
+      - https_proxy=${PROXY}
     command: bash
     security_opt:
       - seccomp:unconfined

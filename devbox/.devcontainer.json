@@ -35,7 +35,8 @@
                 "ms-azuretools.vscode-docker",
                 "cweijan.vscode-typora",
                 "formulahendry.code-runner",
-                "saoudrizwan.claude-dev"
+                "saoudrizwan.claude-dev",
+                "leetcode.vscode-leetcode"
             ]
         }
     },
