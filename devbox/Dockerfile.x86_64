@@ -21,8 +21,14 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
     # Add Node.js apt repository
     curl -fsSL https://deb.nodesource.com/setup_current.x | bash - && \
     # Add Docker apt repository
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg && \
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null && \
+    install -m 0755 -d /etc/apt/keyrings && \
+    curl -fsSL https://mirrors.tuna.tsinghua.edu.cn/docker-ce/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc && \
+    chmod a+r /etc/apt/keyrings/docker.asc && \
+    echo "Types: deb" > /etc/apt/sources.list.d/docker.sources && \
+    echo "URIs: https://download.docker.com/linux/ubuntu" >> /etc/apt/sources.list.d/docker.sources && \
+    echo "Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")" >> /etc/apt/sources.list.d/docker.sources && \
+    echo "Components: stable" >> /etc/apt/sources.list.d/docker.sources && \
+    echo "Signed-By: /etc/apt/keyrings/docker.asc" >> /etc/apt/sources.list.d/docker.sources && \
     # Update package lists
     apt-get update --fix-missing
 
@@ -55,5 +61,3 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
 
 COPY ./tmux.conf /root/.tmux.conf
 
-# RUN apt-get install -y --no-install-recommends openssh-server golang openjdk-11-jdk \
-#         redis-tools mysql-client postgresql-client && \

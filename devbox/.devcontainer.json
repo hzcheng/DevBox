@@ -2,7 +2,7 @@
     // For format details, see https://aka.ms/devcontainer.json. For config options, see the README at:
     // https://github.com/microsoft/vscode-dev-containers/tree/v0.241.1/containers/docker-from-docker-compose
     "name": "DevBox",
-    "dockerComposeFile": "../docker-compose.yml",
+    "dockerComposeFile": "./docker-compose.yml",
     "service": "devbox",
     "workspaceFolder": "/workspace",
     "remoteEnv": {
@@ -36,7 +36,8 @@
                 "cweijan.vscode-typora",
                 "formulahendry.code-runner",
                 "saoudrizwan.claude-dev",
-                "leetcode.vscode-leetcode"
+                "leetcode.vscode-leetcode",
+                "bierner.markdown-preview-github-styles"
             ]
         }
     },
