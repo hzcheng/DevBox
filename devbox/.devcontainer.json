@@ -37,7 +37,8 @@
                 "formulahendry.code-runner",
                 "saoudrizwan.claude-dev",
                 "leetcode.vscode-leetcode",
-                "bierner.markdown-preview-github-styles"
+                "bierner.markdown-preview-github-styles",
+                "bierner.markdown-mermaid"
             ]
         }
     },
