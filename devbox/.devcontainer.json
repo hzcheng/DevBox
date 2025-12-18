@@ -38,7 +38,8 @@
                 "saoudrizwan.claude-dev",
                 "leetcode.vscode-leetcode",
                 "bierner.markdown-preview-github-styles",
-                "bierner.markdown-mermaid"
+                "bierner.markdown-mermaid",
+                "Kelvin.vscode-sshfs"
             ]
         }
     },
