@@ -62,5 +62,5 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
 COPY ./tmux.conf /root/.tmux.conf
 
 RUN apt-get -y install --no-install-recommends \
-    autoconf libtool
+    autoconf libtool automake autotools-dev
 
