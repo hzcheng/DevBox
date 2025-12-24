@@ -17,9 +17,9 @@ services:
     tty: true
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock # for docker-in-docker
-      - ${VSCODE_SERVER_FOLDER}:/root/.vscode-server:cached
+      - ${VSCODE_SERVER_SOURCE:-vscode-server}:/root/.vscode-server
       - .:/workspace:cached
-      - ${MOUNT_WORKSPACE_FOLDER}:/root/workspace/
+      - ${PROJECT_DATA_SOURCE:-project-data}:/root/workspace/
     environment:
       - TZ=Asia/Shanghai
       - DOCKER_BUILDKIT=1
@@ -32,3 +32,9 @@ services:
       - seccomp:unconfined
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+volumes:
+  vscode-server:
+    name: ${PROJECT_NAME}-vscode-server
+  project-data:
+    name: ${PROJECT_NAME}-project-data
