@@ -14,7 +14,7 @@ RUN mv /etc/apt/sources.list /etc/apt/sources.list.bak && \
 RUN export DEBIAN_FRONTEND=noninteractive && \
     apt-get update && \
     apt-get install -y \
-        software-properties-common ca-certificates wget curl gnupg lsb-release inetutils-ping && \
+    software-properties-common ca-certificates wget curl gnupg lsb-release inetutils-ping && \
     # Add LLVM apt repository
     wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add - && \
     add-apt-repository "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-20 main" && \
@@ -34,11 +34,11 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
 
 # Install packages
 RUN apt-get -y install --no-install-recommends \
-        tree vim tmux python3-pip tldr patchelf \
-        docker-ce-cli docker-compose-plugin docker-buildx-plugin \
-        libjansson-dev libsnappy-dev \
-        liblzma-dev libz-dev pkg-config libssl-dev graphviz \
-        && \
+    tree vim tmux python3-pip tldr patchelf \
+    docker-ce-cli docker-compose-plugin docker-buildx-plugin \
+    libjansson-dev libsnappy-dev \
+    liblzma-dev libz-dev pkg-config libssl-dev graphviz \
+    && \
     # Set python3 as default
     update-alternatives --install /usr/bin/python python /usr/bin/python3 100
 
@@ -55,14 +55,32 @@ RUN apt-get install -y --no-install-recommends clangd-20 && \
 RUN export DEBIAN_FRONTEND=noninteractive && \
     pip3 install --upgrade pip && \
     pip3 install \
-        numpy fabric2 psutil pandas toml distro \
-        faker gprof2dot tzlocal matplotlib \
-        ipykernel taos-ws-py taospy baostock tushare
+    numpy fabric2 psutil pandas toml distro \
+    faker gprof2dot tzlocal matplotlib \
+    ipykernel taos-ws-py taospy baostock tushare
 
 COPY ./tmux.conf /root/.tmux.conf
+RUN sed -i 's/\r$//' /root/.tmux.conf
 
 RUN apt-get -y install --no-install-recommends \
     autoconf libtool automake autotools-dev
 
 # Install opencode
 RUN npm install -g opencode-ai
+
+# Install agent skills
+RUN npx skills add https://github.com/vercel-labs/skills --skill find-skills --global --yes && \
+    # Anthropic skills
+    npx skills add anthropics/skills@frontend-design -g -y && \
+    npx skills add anthropics/skills@skill-creator -g -y && \
+    npx skills add anthropics/skills@pdf -g -y && \
+    npx skills add anthropics/skills@pptx -g -y && \
+    npx skills add anthropics/skills@xlsx -g -y && \
+    npx skills add anthropics/skills@docx -g -y && \
+    # Superpower skills
+    npx skills add https://github.com/obra/superpowers --skill brainstorming -g -y && \
+    npx skills add https://github.com/obra/superpowers --skill systematic-debugging -g -y && \
+    npx skills add https://github.com/obra/superpowers --skill test-driven-development -g -y && \
+    npx skills add https://github.com/obra/superpowers --skill writing-plans -g -y && \
+    npx skills add https://github.com/obra/superpowers --skill executing-plans -g -y && \
+    npx skills add https://github.com/obra/superpowers --skill subagent-driven-development -g -y
