@@ -1,8 +1,11 @@
 # docker build --no-cache -t hzcheng/ubuntu:22.04.x86_64 -f ./docker/Dockerfile.ubuntu-22.04.x86_64 .
 # docker run -it --rm hzcheng/ubuntu:22.04.x86_64 bash
 
-# Base image
-FROM mcr.microsoft.com/vscode/devcontainers/cpp:ubuntu-22.04
+# =============================================================================
+# Stage 1: Base image with all development tools
+# This stage contains all the heavy dependencies that rarely change
+# =============================================================================
+FROM mcr.microsoft.com/vscode/devcontainers/cpp:ubuntu-22.04 AS base
 
 # Change source list
 RUN mv /etc/apt/sources.list /etc/apt/sources.list.bak && \
@@ -76,13 +79,31 @@ RUN npm install -g opencode-ai
 ENV PATH="/root/.local/bin:$PATH"
 RUN curl -LsSf https://code.kimi.com/install.sh | bash 
 
-# Install latest stable Neovim
-RUN cd /tmp && \
-    curl -LO https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.tar.gz && \
-    tar xzf nvim-linux-x86_64.tar.gz && \
-    mv nvim-linux-x86_64 /opt/nvim && \
-    rm nvim-linux-x86_64.tar.gz && \
-    ln -sf /opt/nvim/bin/nvim /usr/local/bin/nvim
+# =============================================================================
+# Stage 2: Final image with SSH and code-server
+# This stage adds services that may change more frequently
+# =============================================================================
+FROM base AS devbox
 
-# Copy Neovim configuration
-COPY ./nvim /root/.config/nvim
+# Install SSH server
+RUN apt-get install -y --no-install-recommends openssh-server && \
+    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
+    echo 'root:root' | chpasswd
+
+# Install code-server via .deb package (most reliable for Ubuntu)
+RUN apt-get update && \
+    curl -fOL https://github.com/coder/code-server/releases/download/v4.96.2/code-server_4.96.2_amd64.deb && \
+    dpkg -i code-server_4.96.2_amd64.deb && \
+    rm -f code-server_4.96.2_amd64.deb && \
+    # Verify installation
+    which code-server && code-server --version
+
+# Create code-server config directory
+RUN mkdir -p /root/.config/code-server
+# Copy startup script to a location that won't be overwritten by volume mounts
+COPY ./start-services.sh /usr/local/bin/start-services.sh
+RUN sed -i 's/\r$//' /usr/local/bin/start-services.sh && chmod +x /usr/local/bin/start-services.sh
+
+# Expose code-server port
+EXPOSE 8080 22
