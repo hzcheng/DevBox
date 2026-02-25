@@ -101,6 +101,36 @@ RUN apt-get update && \
 
 # Create code-server config directory
 RUN mkdir -p /root/.config/code-server
+
+# Install VS Code extensions from .devcontainer.json
+RUN code-server --install-extension llvm-vs-code-extensions.vscode-clangd || true && \
+    code-server --install-extension ms-vscode.cmake-tools || true && \
+    code-server --install-extension VisualStudioExptTeam.vscodeintellicode || true && \
+    code-server --install-extension eamodio.gitlens || true && \
+    code-server --install-extension matepek.vscode-catch2-test-adapter || true && \
+    code-server --install-extension urosvujosevic.explorer-manager || true && \
+    code-server --install-extension mhutchie.git-graph || true && \
+    code-server --install-extension ms-python.python || true && \
+    code-server --install-extension github.copilot || true && \
+    code-server --install-extension twxs.cmake || true && \
+    code-server --install-extension github.vscode-pull-request-github || true && \
+    code-server --install-extension llvm-vs-code-extensions.vscode-clangd || true && \
+    code-server --install-extension liangqin.quick-notes || true && \
+    code-server --install-extension ritwickdey.liveserver || true && \
+    code-server --install-extension bierner.markdown-checkbox || true && \
+    code-server --install-extension yzhang.markdown-all-in-one || true && \
+    code-server --install-extension ms-toolsai.jupyter || true && \
+    code-server --install-extension natizyskunk.sftp || true && \
+    code-server --install-extension streetsidesoftware.code-spell-checker || true && \
+    code-server --install-extension ms-python.autopep8 || true && \
+    code-server --install-extension ms-azuretools.vscode-docker || true && \
+    code-server --install-extension formulahendry.code-runner || true && \
+    code-server --install-extension saoudrizwan.claude-dev || true && \
+    code-server --install-extension leetcode.vscode-leetcode || true && \
+    code-server --install-extension bierner.markdown-preview-github-styles || true && \
+    code-server --install-extension bierner.markdown-mermaid || true && \
+    code-server --install-extension Kelvin.vscode-sshfs || true
+
 # Copy startup script to a location that won't be overwritten by volume mounts
 COPY ./start-services.sh /usr/local/bin/start-services.sh
 RUN sed -i 's/\r$//' /usr/local/bin/start-services.sh && chmod +x /usr/local/bin/start-services.sh
