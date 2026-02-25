@@ -51,3 +51,14 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
 
 RUN export DEBIAN_FRONTEND=noninteractive && \
     apt-get install -y patchelf
+
+# Install latest stable Neovim
+RUN cd /tmp && \
+    curl -LO https://github.com/neovim/neovim/releases/latest/download/nvim-linux-arm64.tar.gz && \
+    tar xzf nvim-linux-arm64.tar.gz && \
+    mv nvim-linux-arm64 /opt/nvim && \
+    rm nvim-linux-arm64.tar.gz && \
+    ln -sf /opt/nvim/bin/nvim /usr/local/bin/nvim
+
+# Copy Neovim configuration
+COPY ./nvim /root/.config/nvim

@@ -72,6 +72,17 @@ RUN apt-get -y install --no-install-recommends \
 # Install opencode
 RUN npm install -g opencode-ai
 
+# Install latest stable Neovim
+RUN cd /tmp && \
+    curl -LO https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.tar.gz && \
+    tar xzf nvim-linux-x86_64.tar.gz && \
+    mv nvim-linux-x86_64 /opt/nvim && \
+    rm nvim-linux-x86_64.tar.gz && \
+    ln -sf /opt/nvim/bin/nvim /usr/local/bin/nvim
+
+# Copy Neovim configuration
+COPY ./nvim /root/.config/nvim
+
 # # Install kimi code
 # RUN curl -L code.kimi.com/install.sh -o install.sh && \
 #     bash install.sh 
