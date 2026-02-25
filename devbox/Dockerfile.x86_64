@@ -32,15 +32,19 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
     # Update package lists
     apt-get update --fix-missing
 
-# Install packages
+# Install packages and Chinese locale
 RUN apt-get -y install --no-install-recommends \
     tree vim tmux python3-pip tldr patchelf \
     docker-ce-cli docker-compose-plugin docker-buildx-plugin \
     libjansson-dev libsnappy-dev \
     liblzma-dev libz-dev pkg-config libssl-dev graphviz \
+    locales \
     && \
     # Set python3 as default
-    update-alternatives --install /usr/bin/python python /usr/bin/python3 100
+    update-alternatives --install /usr/bin/python python /usr/bin/python3 100 && \
+    # Generate Chinese locale
+    locale-gen zh_CN.UTF-8 && \
+    update-locale LANG=zh_CN.UTF-8
 
 # Install nodejs and npm
 RUN apt-get remove -y nodejs && \
@@ -68,19 +72,23 @@ RUN apt-get -y install --no-install-recommends \
 # Install opencode
 RUN npm install -g opencode-ai
 
-# Install agent skills
-RUN npx skills add https://github.com/vercel-labs/skills --skill find-skills --global --yes && \
-    # Anthropic skills
-    npx skills add anthropics/skills@frontend-design -g -y && \
-    npx skills add anthropics/skills@skill-creator -g -y && \
-    npx skills add anthropics/skills@pdf -g -y && \
-    npx skills add anthropics/skills@pptx -g -y && \
-    npx skills add anthropics/skills@xlsx -g -y && \
-    npx skills add anthropics/skills@docx -g -y && \
-    # Superpower skills
-    npx skills add https://github.com/obra/superpowers --skill brainstorming -g -y && \
-    npx skills add https://github.com/obra/superpowers --skill systematic-debugging -g -y && \
-    npx skills add https://github.com/obra/superpowers --skill test-driven-development -g -y && \
-    npx skills add https://github.com/obra/superpowers --skill writing-plans -g -y && \
-    npx skills add https://github.com/obra/superpowers --skill executing-plans -g -y && \
-    npx skills add https://github.com/obra/superpowers --skill subagent-driven-development -g -y
+# # Install kimi code
+# RUN curl -L code.kimi.com/install.sh -o install.sh && \
+#     bash install.sh 
+
+# # Install agent skills
+# RUN npx skills add https://github.com/vercel-labs/skills --skill find-skills --global --yes && \
+#     # Anthropic skills
+#     npx skills add anthropics/skills@frontend-design -g -y && \
+#     npx skills add anthropics/skills@skill-creator -g -y && \
+#     npx skills add anthropics/skills@pdf -g -y && \
+#     npx skills add anthropics/skills@pptx -g -y && \
+#     npx skills add anthropics/skills@xlsx -g -y && \
+#     npx skills add anthropics/skills@docx -g -y && \
+#     # Superpower skills
+#     npx skills add https://github.com/obra/superpowers --skill brainstorming -g -y && \
+#     npx skills add https://github.com/obra/superpowers --skill systematic-debugging -g -y && \
+#     npx skills add https://github.com/obra/superpowers --skill test-driven-development -g -y && \
+#     npx skills add https://github.com/obra/superpowers --skill writing-plans -g -y && \
+#     npx skills add https://github.com/obra/superpowers --skill executing-plans -g -y && \
+#     npx skills add https://github.com/obra/superpowers --skill subagent-driven-development -g -y
