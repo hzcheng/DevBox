@@ -99,7 +99,7 @@ return {
           "prettier", -- prettier formatter
           "stylua", -- lua formatter
           "black", -- python formatter
-          "pylint", -- python linter
+          -- "pylint", -- python linter (需要 Python 环境)
           "clang-format", -- c/c++ formatter
         },
       })

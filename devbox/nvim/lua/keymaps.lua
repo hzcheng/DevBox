@@ -67,6 +67,14 @@ keymap("n", "<leader>fr", "<cmd>Telescope oldfiles<CR>", { desc = "Recent files"
 keymap("n", "<C-b>", "<cmd>NvimTreeToggle<CR>", { desc = "Toggle file explorer" })
 keymap("n", "<leader>e", "<cmd>NvimTreeFocus<CR>", { desc = "Focus file explorer" })
 
+-- Git/Diffview (VSCode-like Source Control view)
+-- Open Git Changes view - similar to VSCode's Source Control panel
+keymap("n", "<C-g>", "<cmd>DiffviewOpen<CR>", { desc = "Open Git changes (VSCode-like)" })
+keymap("n", "<leader>go", "<cmd>DiffviewOpen<CR>", { desc = "Open Git diff view" })
+keymap("n", "<leader>gc", "<cmd>DiffviewClose<CR>", { desc = "Close Git diff view" })
+keymap("n", "<leader>gr", "<cmd>DiffviewRefresh<CR>", { desc = "Refresh Git changes" })
+keymap("n", "<leader>gh", "<cmd>DiffviewFileHistory<CR>", { desc = "File history" })
+
 -- LSP
 keymap("n", "gd", vim.lsp.buf.definition, { desc = "Go to definition" })
 keymap("n", "gr", vim.lsp.buf.references, { desc = "Go to references" })

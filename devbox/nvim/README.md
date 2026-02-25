@@ -82,6 +82,7 @@ Neovim 有三种基本模式：
 | 查找文件 | `<Ctrl+P>` | 打开 Telescope 查找文件 |
 | 全局搜索 | `<Leader>fg` | 在当前项目中搜索文本 |
 | 文件资源管理器 | `<Ctrl+B>` | 打开/关闭 nvim-tree |
+| Git 改动视图 | `<Ctrl+G>` | 打开 Diffview（右侧显示改动文件） |
 | 终端 | `<Ctrl+`>` | 打开/关闭浮动终端 |
 | 保存 | `<Ctrl+S>` | 保存文件 |
 | 命令面板 | `<Ctrl+Shift+P>` | 打开 Telescope 命令 |
@@ -150,7 +151,9 @@ Neovim 有三种基本模式：
 | 预览滚动下 | `<Ctrl+D>` | 向下滚动预览 |
 | 预览滚动上 | `<Ctrl+U>` | 向上滚动预览 |
 
-### Git 集成 (gitsigns)
+### Git 集成
+
+#### Gitsigns（代码内显示）
 
 | 功能 | 快捷键 | 说明 |
 |------|--------|------|
@@ -160,6 +163,30 @@ Neovim 有三种基本模式：
 | 撤销 hunk | `<Leader>hr` | 撤销当前修改 |
 | 预览 hunk | `<Leader>hp` | 预览当前修改 |
 | 显示 blame | `<Leader>hb` | 显示当前行 blame |
+
+#### Diffview（VSCode-like Changes 视图）
+
+| 功能 | 快捷键 | 说明 |
+|------|--------|------|
+| 打开 Git 改动视图 | `<Ctrl+G>` | 打开 Diffview，右侧显示所有修改的文件 |
+| 打开 Git 改动视图 | `<Leader>go` | 打开 Diffview，右侧显示所有修改的文件 |
+| 关闭 Git 视图 | `<Leader>gc` | 关闭 Diffview |
+| 刷新 Git 视图 | `<Leader>gr` | 刷新 Diffview |
+| 文件历史 | `<Leader>gh` | 查看文件提交历史 |
+
+**Diffview 操作说明（类似 VSCode 的 Changes 视图）:**
+
+在 Diffview 界面中：
+- 右侧文件面板显示所有有改动的文件
+- 使用 `j/k` 或方向键在文件列表中移动
+- 按 `Enter` 或 `o` 打开选中文件的 diff 比较
+- 按 `-` 暂存/取消暂存当前文件
+- 按 `S` 暂存所有文件
+- 按 `U` 取消暂存所有文件
+- 按 `X` 恢复文件到之前的状态
+- 按 `Tab` 切换到下一个文件
+- 按 `gf` 在编辑器中打开文件
+- 按 `?` 查看所有快捷键帮助
 
 ### 终端 (toggleterm)
 
@@ -221,7 +248,8 @@ Neovim 有三种基本模式：
 
 | 插件名 | 功能描述 |
 |--------|----------|
-| `gitsigns.nvim` | Git 集成 |
+| `gitsigns.nvim` | Git 集成（代码内显示改动） |
+| `diffview.nvim` | Git diff 查看器（VSCode-like Changes 视图） |
 | `toggleterm.nvim` | 终端 |
 | `which-key.nvim` | 快捷键提示 |
 | `nvim-web-devicons` | 文件图标 |
@@ -281,6 +309,7 @@ Neovim 有三种基本模式：
 │       ├── comment.lua
 │       ├── autopairs.lua
 │       ├── gitsigns.lua
+│       ├── diffview.lua
 │       ├── toggleterm.lua
 │       ├── bufferline.lua
 │       ├── which-key.lua

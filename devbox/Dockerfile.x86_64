@@ -72,6 +72,10 @@ RUN apt-get -y install --no-install-recommends \
 # Install opencode
 RUN npm install -g opencode-ai
 
+# Install kimi code
+ENV PATH="/root/.local/bin:$PATH"
+RUN curl -LsSf https://code.kimi.com/install.sh | bash 
+
 # Install latest stable Neovim
 RUN cd /tmp && \
     curl -LO https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.tar.gz && \
@@ -82,24 +86,3 @@ RUN cd /tmp && \
 
 # Copy Neovim configuration
 COPY ./nvim /root/.config/nvim
-
-# Install kimi code
-ENV PATH="/root/.local/bin:$PATH"
-RUN curl -LsSf https://code.kimi.com/install.sh | bash 
-
-# # Install agent skills
-# RUN npx skills add https://github.com/vercel-labs/skills --skill find-skills --global --yes && \
-#     # Anthropic skills
-#     npx skills add anthropics/skills@frontend-design -g -y && \
-#     npx skills add anthropics/skills@skill-creator -g -y && \
-#     npx skills add anthropics/skills@pdf -g -y && \
-#     npx skills add anthropics/skills@pptx -g -y && \
-#     npx skills add anthropics/skills@xlsx -g -y && \
-#     npx skills add anthropics/skills@docx -g -y && \
-#     # Superpower skills
-#     npx skills add https://github.com/obra/superpowers --skill brainstorming -g -y && \
-#     npx skills add https://github.com/obra/superpowers --skill systematic-debugging -g -y && \
-#     npx skills add https://github.com/obra/superpowers --skill test-driven-development -g -y && \
-#     npx skills add https://github.com/obra/superpowers --skill writing-plans -g -y && \
-#     npx skills add https://github.com/obra/superpowers --skill executing-plans -g -y && \
-#     npx skills add https://github.com/obra/superpowers --skill subagent-driven-development -g -y

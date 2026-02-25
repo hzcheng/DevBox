@@ -51,7 +51,7 @@ return {
           spacing = 3,
           align = "left",
         },
-        filter = false,
+        -- filter 选项已在新版中移除或需要函数值
         show_help = true,
         show_keys = true,
         triggers = { "auto" },
@@ -81,6 +81,9 @@ return {
         { '"', '"', desc = "which_key_ignore" },
         { "<c-r>", "<c-r>", desc = "which_key_ignore" },
         { "z=", "z=", desc = "which_key_ignore" },
+        -- Register groups for better which-key display
+        { "<leader>g", group = "Git" },
+        { "<leader>h", group = "Hunk (Git)" },
       })
     end,
   },
