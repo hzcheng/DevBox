@@ -4,7 +4,7 @@
     "name": "DevBox",
     "dockerComposeFile": "../docker-compose.yml",
     "service": "devbox",
-    "workspaceFolder": "/workspace",
+    "workspaceFolder": "/root/Projects/DevBox",
     "remoteEnv": {
         "LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}"
     },
