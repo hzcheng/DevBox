@@ -17,8 +17,9 @@ services:
     tty: true
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock # for docker-in-docker
-      - ${DEV_CONTAINER_VOLUME:-container-volume}:/root
-      - ..:/root/DevBox:cached
+      - ${DEV_ROOT:-dev-root}:/root
+      - ${DEV_PROJECTS:-dev-projects}:/root/Projects
+      - ..:/root/Projects/DevBox:cached
     environment:
       - TZ=Asia/Shanghai
       - LANG=zh_CN.UTF-8
@@ -36,5 +37,7 @@ services:
       - "host.docker.internal:host-gateway"
 
 volumes:
-  container-volume:
-    name: ${PROJECT_NAME}-container-volume
+  dev-root:
+    name: ${PROJECT_NAME}-dev-root
+  dev-projects:
+    name: ${PROJECT_NAME}-project-data
