@@ -77,7 +77,15 @@ RUN npm install -g opencode-ai
 
 # Install kimi code
 ENV PATH="/root/.local/bin:$PATH"
-RUN curl -LsSf https://code.kimi.com/install.sh | bash 
+RUN curl -LsSf https://code.kimi.com/install.sh | bash
+
+# Install latest stable neovim
+RUN curl -LO https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.tar.gz && \
+    rm -rf /opt/nvim && \
+    tar -C /opt -xzf nvim-linux-x86_64.tar.gz && \
+    rm -f nvim-linux-x86_64.tar.gz && \
+    ln -sf /opt/nvim-linux-x86_64/bin/nvim /usr/local/bin/nvim && \
+    ln -sf /usr/local/bin/nvim /usr/local/bin/vim 
 
 # =============================================================================
 # Stage 2: Final image with SSH and code-server
