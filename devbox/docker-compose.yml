@@ -17,9 +17,8 @@ services:
     tty: true
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock # for docker-in-docker
-      - ${VSCODE_SERVER_SOURCE:-vscode-server}:/root/.vscode-server
-      - .:/workspace:cached
-      - ${PROJECT_DATA_SOURCE:-project-data}:/root/workspace/
+      - ${DEV_CONTAINER_VOLUME:-container-volume}:/root
+      - ..:/root/DevBox:cached
     environment:
       - TZ=Asia/Shanghai
       - LANG=zh_CN.UTF-8
@@ -37,7 +36,5 @@ services:
       - "host.docker.internal:host-gateway"
 
 volumes:
-  vscode-server:
-    name: ${PROJECT_NAME}-vscode-server
-  project-data:
-    name: ${PROJECT_NAME}-project-data
+  container-volume:
+    name: ${PROJECT_NAME}-container-volume

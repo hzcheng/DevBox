@@ -83,9 +83,9 @@ RUN cd /tmp && \
 # Copy Neovim configuration
 COPY ./nvim /root/.config/nvim
 
-# # Install kimi code
-# RUN curl -L code.kimi.com/install.sh -o install.sh && \
-#     bash install.sh 
+# Install kimi code
+ENV PATH="/root/.local/bin:$PATH"
+RUN curl -LsSf https://code.kimi.com/install.sh | bash 
 
 # # Install agent skills
 # RUN npx skills add https://github.com/vercel-labs/skills --skill find-skills --global --yes && \
