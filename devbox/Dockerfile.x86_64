@@ -124,7 +124,6 @@ RUN code-server --install-extension llvm-vs-code-extensions.vscode-clangd || tru
     code-server --install-extension github.vscode-pull-request-github || true && \
     code-server --install-extension llvm-vs-code-extensions.vscode-clangd || true && \
     code-server --install-extension liangqin.quick-notes || true && \
-    code-server --install-extension ritwickdey.liveserver || true && \
     code-server --install-extension bierner.markdown-checkbox || true && \
     code-server --install-extension yzhang.markdown-all-in-one || true && \
     code-server --install-extension ms-toolsai.jupyter || true && \
@@ -137,7 +136,9 @@ RUN code-server --install-extension llvm-vs-code-extensions.vscode-clangd || tru
     code-server --install-extension leetcode.vscode-leetcode || true && \
     code-server --install-extension bierner.markdown-preview-github-styles || true && \
     code-server --install-extension bierner.markdown-mermaid || true && \
-    code-server --install-extension Kelvin.vscode-sshfs || true
+    code-server --install-extension ms-azuretools.vscode-containers || true && \
+    code-server --install-extension asvetliakov.vscode-neovim || true && \
+    code-server --install-extension vscode-icons-team.vscode-icons || true
 
 # Copy startup script to a location that won't be overwritten by volume mounts
 COPY ./start-services.sh /usr/local/bin/start-services.sh
