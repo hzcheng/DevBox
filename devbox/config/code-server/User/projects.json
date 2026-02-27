@@ -14,5 +14,13 @@
 		"tags": [],
 		"enabled": true,
 		"profile": ""
+	},
+	{
+		"name": "LifeCraft",
+		"rootPath": "/root/Projects/LifeCraft",
+		"paths": [],
+		"tags": [],
+		"enabled": true,
+		"profile": ""
 	}
 ]

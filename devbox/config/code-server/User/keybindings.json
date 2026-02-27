@@ -39,4 +39,8 @@
         "command": "workbench.action.terminal.runSelectedText",
         "when": "terminalProcessSupported"
     },
+    {
+        "key": "shift+cmd+b",
+        "command": "workbench.action.toggleAuxiliaryBar"
+    },
 ]

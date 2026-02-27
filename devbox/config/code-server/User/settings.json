@@ -3,5 +3,5 @@
     "terminal.integrated.macOptionIsMeta": true,
     "extensions.experimental.affinity": {
         "asvetliakov.vscode-neovim": 1
-    }
+    "containers.images.groupBy": "Registry"
 }

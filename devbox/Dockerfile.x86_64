@@ -133,6 +133,8 @@ RUN code-server --install-extension asvetliakov.vscode-neovim
 RUN code-server --install-extension ryuta46.multi-command
 RUN code-server --install-extension vscode-icons-team.vscode-icons
 RUN code-server --install-extension alefragnani.project-manager
+RUN code-server --install-extension saoudrizwan.claude-dev
+RUN code-server --install-extension kelvin.vscode-sshfs
 
 # Copy startup script to a location that won't be overwritten by volume mounts
 COPY ./start-services.sh /usr/local/bin/start-services.sh
