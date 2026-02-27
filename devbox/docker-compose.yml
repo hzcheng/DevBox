@@ -19,6 +19,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock # for docker-in-docker
       - ${DEV_PROJECTS:-dev-projects}:/root/Projects
       - ..:/root/Projects/DevBox:cached
+      - ./config/code-server/User/keybindings.json:/root/.local/share/code-server/User/keybindings.json:cached
+      - ./config/code-server/User/settings.json:/root/.local/share/code-server/User/settings.json:cached
+      - ./config/code-server/User/projects.json:/root/.local/share/code-server/User/globalStorage/alefragnani.project-manager/projects.json:cached
     environment:
       - TZ=Asia/Shanghai
       - LANG=zh_CN.UTF-8

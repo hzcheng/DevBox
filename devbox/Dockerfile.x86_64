@@ -126,7 +126,6 @@ RUN code-server --install-extension streetsidesoftware.code-spell-checker
 RUN code-server --install-extension ms-python.autopep8
 RUN code-server --install-extension ms-azuretools.vscode-docker
 RUN code-server --install-extension formulahendry.code-runner
-RUN code-server --install-extension saoudrizwan.claude-dev
 RUN code-server --install-extension bierner.markdown-preview-github-styles
 RUN code-server --install-extension bierner.markdown-mermaid
 RUN code-server --install-extension ms-azuretools.vscode-containers

@@ -1,0 +1,42 @@
+// Place your key bindings in this file to override the defaults
+[
+    {
+        "key": "ctrl+cmd+u",
+        "command": "workbench.view.extension.containersView",
+        "when": "viewContainer.workbench.view.extension.containersView.enabled"
+    },
+    {
+        "key": "ctrl+cmd+g",
+        "command": "workbench.view.scm",
+        "when": "workbench.scm.active"
+    },
+    {
+        "key": "shift+cmd+r",
+        "command": "workbench.files.action.showActiveFileInExplorer"
+    },
+    {
+        "key": "ctrl+z",
+        "command": "workbench.action.toggleMaximizedPanel",
+        "when": "panelAlignment == 'center' || panelPosition != 'bottom' && panelPosition != 'top'"
+    },
+    {
+        "key": "ctrl+w",
+        "command": "workbench.action.closeActiveEditor"
+    },
+    {
+        "key": "cmd+s",
+        "command": "extension.multiCommand.execute",
+        "args": {
+            "sequence": [
+                "vscode-neovim.escape",
+                "workbench.action.files.save"
+            ]
+        },
+        "when": "editorTextFocus && neovim.init"
+    },
+    {
+        "key": "ctrl+cmd+y",
+        "command": "workbench.action.terminal.runSelectedText",
+        "when": "terminalProcessSupported"
+    },
+]
