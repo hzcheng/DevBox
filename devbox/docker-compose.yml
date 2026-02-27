@@ -17,7 +17,6 @@ services:
     tty: true
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock # for docker-in-docker
-      - ${DEV_ROOT:-dev-root}:/root
       - ${DEV_PROJECTS:-dev-projects}:/root/Projects
       - ..:/root/Projects/DevBox:cached
     environment:
@@ -40,7 +39,5 @@ services:
       - "${SSH_PORT:-2222}:22"
 
 volumes:
-  dev-root:
-    name: ${PROJECT_NAME}-dev-root
   dev-projects:
     name: ${PROJECT_NAME}-project-data

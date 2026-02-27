@@ -111,34 +111,29 @@ RUN apt-get update && \
 RUN mkdir -p /root/.config/code-server
 
 # Install VS Code extensions from .devcontainer.json
-RUN code-server --install-extension llvm-vs-code-extensions.vscode-clangd || true && \
-    code-server --install-extension ms-vscode.cmake-tools || true && \
-    code-server --install-extension VisualStudioExptTeam.vscodeintellicode || true && \
-    code-server --install-extension eamodio.gitlens || true && \
-    code-server --install-extension matepek.vscode-catch2-test-adapter || true && \
-    code-server --install-extension urosvujosevic.explorer-manager || true && \
-    code-server --install-extension mhutchie.git-graph || true && \
-    code-server --install-extension ms-python.python || true && \
-    code-server --install-extension github.copilot || true && \
-    code-server --install-extension twxs.cmake || true && \
-    code-server --install-extension github.vscode-pull-request-github || true && \
-    code-server --install-extension llvm-vs-code-extensions.vscode-clangd || true && \
-    code-server --install-extension liangqin.quick-notes || true && \
-    code-server --install-extension bierner.markdown-checkbox || true && \
-    code-server --install-extension yzhang.markdown-all-in-one || true && \
-    code-server --install-extension ms-toolsai.jupyter || true && \
-    code-server --install-extension natizyskunk.sftp || true && \
-    code-server --install-extension streetsidesoftware.code-spell-checker || true && \
-    code-server --install-extension ms-python.autopep8 || true && \
-    code-server --install-extension ms-azuretools.vscode-docker || true && \
-    code-server --install-extension formulahendry.code-runner || true && \
-    code-server --install-extension saoudrizwan.claude-dev || true && \
-    code-server --install-extension leetcode.vscode-leetcode || true && \
-    code-server --install-extension bierner.markdown-preview-github-styles || true && \
-    code-server --install-extension bierner.markdown-mermaid || true && \
-    code-server --install-extension ms-azuretools.vscode-containers || true && \
-    code-server --install-extension asvetliakov.vscode-neovim || true && \
-    code-server --install-extension vscode-icons-team.vscode-icons || true
+RUN code-server --install-extension llvm-vs-code-extensions.vscode-clangd
+RUN code-server --install-extension ms-vscode.cmake-tools
+RUN code-server --install-extension eamodio.gitlens
+RUN code-server --install-extension matepek.vscode-catch2-test-adapter
+RUN code-server --install-extension mhutchie.git-graph
+RUN code-server --install-extension ms-python.python
+RUN code-server --install-extension github.vscode-pull-request-github
+RUN code-server --install-extension llvm-vs-code-extensions.vscode-clangd
+RUN code-server --install-extension yzhang.markdown-all-in-one
+RUN code-server --install-extension ms-toolsai.jupyter
+RUN code-server --install-extension natizyskunk.sftp
+RUN code-server --install-extension streetsidesoftware.code-spell-checker
+RUN code-server --install-extension ms-python.autopep8
+RUN code-server --install-extension ms-azuretools.vscode-docker
+RUN code-server --install-extension formulahendry.code-runner
+RUN code-server --install-extension saoudrizwan.claude-dev
+RUN code-server --install-extension bierner.markdown-preview-github-styles
+RUN code-server --install-extension bierner.markdown-mermaid
+RUN code-server --install-extension ms-azuretools.vscode-containers
+RUN code-server --install-extension asvetliakov.vscode-neovim
+RUN code-server --install-extension ryuta46.multi-command
+RUN code-server --install-extension vscode-icons-team.vscode-icons
+RUN code-server --install-extension alefragnani.project-manager
 
 # Copy startup script to a location that won't be overwritten by volume mounts
 COPY ./start-services.sh /usr/local/bin/start-services.sh
