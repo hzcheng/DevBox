@@ -11,6 +11,6 @@
     "remote.autoForwardPortsSource": "hybrid",
     "git.confirmSync": false,
     "workbench.startupEditor": "none",
-    "explorer.confirmPasteNative": false,
+    "workbench.secondarySideBar.showLabels": false,
 
 }

@@ -28,11 +28,11 @@
         "command": "extension.multiCommand.execute",
         "args": {
             "sequence": [
-                "vscode-neovim.escape",
-                "workbench.action.files.save"
+                "extension.vim_escape",
+                "workbench.action.files.save",
             ]
         },
-        "when": "editorTextFocus && neovim.init"
+        "when": "editorTextFocus && vim.active && !inDebugRepl"
     },
     {
         "key": "ctrl+cmd+y",
@@ -57,5 +57,20 @@
         "key": "ctrl+cmd+b",
         "command": "cmake.build",
         "when": "cmake:enableFullFeatureSet && !cmake:hideBuildCommand"
+    },
+    {
+        "key": "ctrl+cmd+s",
+        "command": "git.stageAll",
+        "when": "!operationInProgress"
+    },
+    {
+        "key": "ctrl+shift+]",
+        "command": "editor.action.revealDefinitionAside",
+        "when": "editorHasDefinitionProvider && !isInEmbeddedEditor"
+    },
+    {
+        "key": "space",
+        "command": "jump-extension.jump-to-the-start-of-a-word",
+        "when": "editorTextFocus && vim.active && vim.mode == Normal"
     },
 ]

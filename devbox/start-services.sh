@@ -45,12 +45,12 @@ code-server --install-extension formulahendry.code-runner
 code-server --install-extension bierner.markdown-preview-github-styles
 code-server --install-extension bierner.markdown-mermaid
 code-server --install-extension ms-azuretools.vscode-containers
-code-server --install-extension asvetliakov.vscode-neovim
 code-server --install-extension ryuta46.multi-command
 code-server --install-extension vscode-icons-team.vscode-icons
 code-server --install-extension alefragnani.project-manager
 code-server --install-extension saoudrizwan.claude-dev
 code-server --install-extension kelvin.vscode-sshfs
+code-server --install-extension wenfangdu.jump   
 
 # Keep container running
 wait
