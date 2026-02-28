@@ -101,40 +101,16 @@ RUN apt-get install -y --no-install-recommends openssh-server && \
 
 # Install code-server via .deb package (most reliable for Ubuntu)
 RUN apt-get update && \
-    curl -fOL https://github.com/coder/code-server/releases/download/v4.96.2/code-server_4.96.2_amd64.deb && \
-    dpkg -i code-server_4.96.2_amd64.deb && \
-    rm -f code-server_4.96.2_amd64.deb && \
+    LATEST_VERSION=$(curl -s https://api.github.com/repos/coder/code-server/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/') && \
+    echo "Installing code-server ${LATEST_VERSION}" && \
+    curl -fOL "https://github.com/coder/code-server/releases/download/${LATEST_VERSION}/code-server_${LATEST_VERSION#v}_amd64.deb" && \
+    dpkg -i "code-server_${LATEST_VERSION#v}_amd64.deb" && \
+    rm -f "code-server_${LATEST_VERSION#v}_amd64.deb" && \
     # Verify installation
     which code-server && code-server --version
 
 # Create code-server config directory
 RUN mkdir -p /root/.config/code-server
-
-# Install VS Code extensions from .devcontainer.json
-RUN code-server --install-extension llvm-vs-code-extensions.vscode-clangd
-RUN code-server --install-extension ms-vscode.cmake-tools
-RUN code-server --install-extension eamodio.gitlens
-RUN code-server --install-extension matepek.vscode-catch2-test-adapter
-RUN code-server --install-extension mhutchie.git-graph
-RUN code-server --install-extension ms-python.python
-RUN code-server --install-extension github.vscode-pull-request-github
-RUN code-server --install-extension llvm-vs-code-extensions.vscode-clangd
-RUN code-server --install-extension yzhang.markdown-all-in-one
-RUN code-server --install-extension ms-toolsai.jupyter
-RUN code-server --install-extension natizyskunk.sftp
-RUN code-server --install-extension streetsidesoftware.code-spell-checker
-RUN code-server --install-extension ms-python.autopep8
-RUN code-server --install-extension ms-azuretools.vscode-docker
-RUN code-server --install-extension formulahendry.code-runner
-RUN code-server --install-extension bierner.markdown-preview-github-styles
-RUN code-server --install-extension bierner.markdown-mermaid
-RUN code-server --install-extension ms-azuretools.vscode-containers
-RUN code-server --install-extension asvetliakov.vscode-neovim
-RUN code-server --install-extension ryuta46.multi-command
-RUN code-server --install-extension vscode-icons-team.vscode-icons
-RUN code-server --install-extension alefragnani.project-manager
-RUN code-server --install-extension saoudrizwan.claude-dev
-RUN code-server --install-extension kelvin.vscode-sshfs
 
 # Copy startup script to a location that won't be overwritten by volume mounts
 COPY ./start-services.sh /usr/local/bin/start-services.sh

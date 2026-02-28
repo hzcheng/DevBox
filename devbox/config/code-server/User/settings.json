@@ -3,5 +3,14 @@
     "terminal.integrated.macOptionIsMeta": true,
     "extensions.experimental.affinity": {
         "asvetliakov.vscode-neovim": 1
-    "containers.images.groupBy": "Registry"
+    },
+    "containers.images.groupBy": "Registry",
+    "containers.images.label": "RepositoryNameAndTag",
+
+    "terminal.integrated.copyOnSelection": true,
+    "remote.autoForwardPortsSource": "hybrid",
+    "git.confirmSync": false,
+    "workbench.startupEditor": "none",
+    "explorer.confirmPasteNative": false,
+
 }

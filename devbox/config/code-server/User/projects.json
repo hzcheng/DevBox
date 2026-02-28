@@ -1,7 +1,7 @@
 [
 	{
 		"name": "DevBox",
-		"rootPath": "/root/Projects/DevBox",
+		"rootPath": "/Projects/DevBox",
 		"paths": [],
 		"tags": [],
 		"enabled": true,
@@ -9,15 +9,15 @@
 	},
 	{
 		"name": "TDinternal",
-		"rootPath": "/root/Projects/TDinternal",
+		"rootPath": "/Projects/TDinternal",
 		"paths": [],
 		"tags": [],
 		"enabled": true,
 		"profile": ""
 	},
 	{
-		"name": "LifeCraft",
-		"rootPath": "/root/Projects/LifeCraft",
+		"name": "work",
+		"rootPath": "/Projects/work",
 		"paths": [],
 		"tags": [],
 		"enabled": true,

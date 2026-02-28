@@ -17,8 +17,9 @@ services:
     tty: true
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock # for docker-in-docker
-      - ${DEV_PROJECTS:-dev-projects}:/root/Projects
-      - ..:/root/Projects/DevBox:cached
+      - ${DEV_ROOT:-dev-root}:/root
+      - ${DEV_PROJECTS:-dev-projects}:/Projects
+      - ..:/Projects/DevBox:cached
       - ./config/code-server/User/keybindings.json:/root/.local/share/code-server/User/keybindings.json:cached
       - ./config/code-server/User/settings.json:/root/.local/share/code-server/User/settings.json:cached
       - ./config/code-server/User/projects.json:/root/.local/share/code-server/User/globalStorage/alefragnani.project-manager/projects.json:cached
@@ -42,5 +43,7 @@ services:
       - "${SSH_PORT:-2222}:22"
 
 volumes:
+  dev-root:
+    name: ${PROJECT_NAME}-dev-root
   dev-projects:
     name: ${PROJECT_NAME}-project-data

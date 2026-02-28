@@ -26,5 +26,31 @@ EOF
 # Try multiple possible locations for code-server
 /usr/bin/code-server --config /root/.config/code-server/config.yaml /root/Projects &
 
+# Install code server extensions
+code-server --install-extension llvm-vs-code-extensions.vscode-clangd
+code-server --install-extension ms-vscode.cmake-tools
+code-server --install-extension eamodio.gitlens
+code-server --install-extension matepek.vscode-catch2-test-adapter
+code-server --install-extension mhutchie.git-graph
+code-server --install-extension ms-python.python
+code-server --install-extension github.vscode-pull-request-github
+code-server --install-extension llvm-vs-code-extensions.vscode-clangd
+code-server --install-extension yzhang.markdown-all-in-one
+code-server --install-extension ms-toolsai.jupyter
+code-server --install-extension natizyskunk.sftp
+code-server --install-extension streetsidesoftware.code-spell-checker
+code-server --install-extension ms-python.autopep8
+code-server --install-extension ms-azuretools.vscode-docker
+code-server --install-extension formulahendry.code-runner
+code-server --install-extension bierner.markdown-preview-github-styles
+code-server --install-extension bierner.markdown-mermaid
+code-server --install-extension ms-azuretools.vscode-containers
+code-server --install-extension asvetliakov.vscode-neovim
+code-server --install-extension ryuta46.multi-command
+code-server --install-extension vscode-icons-team.vscode-icons
+code-server --install-extension alefragnani.project-manager
+code-server --install-extension saoudrizwan.claude-dev
+code-server --install-extension kelvin.vscode-sshfs
+
 # Keep container running
 wait
