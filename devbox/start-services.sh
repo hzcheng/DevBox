@@ -51,6 +51,7 @@ code-server --install-extension alefragnani.project-manager
 code-server --install-extension saoudrizwan.claude-dev
 code-server --install-extension kelvin.vscode-sshfs
 code-server --install-extension wenfangdu.jump   
+code-server --install-extension kylinideteam.cppdebug
 
 # Keep container running
 wait
