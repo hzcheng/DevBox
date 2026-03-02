@@ -33,6 +33,18 @@ services:
       - ASAN_OPTIONS=abort_on_error=1:disable_coredump=0:unmap_shadow_on_exit=1
       - http_proxy=${PROXY}
       - https_proxy=${PROXY}
+      # DeepSeek
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - DEEPSEEK_API_URL=${DEEPSEEK_API_URL:-https://api.deepseek.com}
+      # Kimi Code 2.5
+      - KIMI_CODE_API_KEY=${KIMI_CODE_API_KEY}
+      - KIMI_CODE_API_URL=${KIMI_CODE_API_URL:-https://api.moonshot.cn/v1}
+      # Claude Code
+      - ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN}
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-https://api.anthropic.com}
+      # ChatGPT Codex
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
     command: /usr/local/bin/start-services.sh
     security_opt:
       - seccomp:unconfined

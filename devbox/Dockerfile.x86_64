@@ -72,20 +72,12 @@ RUN sed -i 's/\r$//' /root/.tmux.conf
 RUN apt-get -y install --no-install-recommends \
     autoconf libtool automake autotools-dev
 
-# Install opencode
-RUN npm install -g opencode-ai
+# Install AI CLIs
+RUN npm install -g opencode-ai @anthropic-ai/claude-code @openai/codex
 
 # Install kimi code
 ENV PATH="/root/.local/bin:$PATH"
 RUN curl -LsSf https://code.kimi.com/install.sh | bash
-
-# Install latest stable neovim
-RUN curl -LO https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.tar.gz && \
-    rm -rf /opt/nvim && \
-    tar -C /opt -xzf nvim-linux-x86_64.tar.gz && \
-    rm -f nvim-linux-x86_64.tar.gz && \
-    ln -sf /opt/nvim-linux-x86_64/bin/nvim /usr/local/bin/nvim && \
-    ln -sf /usr/local/bin/nvim /usr/local/bin/vim 
 
 # =============================================================================
 # Stage 2: Final image with SSH and code-server
@@ -99,13 +91,15 @@ RUN apt-get install -y --no-install-recommends openssh-server && \
     sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
     echo 'root:root' | chpasswd
 
-# Install code-server via .deb package (most reliable for Ubuntu)
+# Install code-server via .deb package (without GitHub API rate-limit dependency)
 RUN apt-get update && \
-    LATEST_VERSION=$(curl -s https://api.github.com/repos/coder/code-server/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/') && \
-    echo "Installing code-server ${LATEST_VERSION}" && \
-    curl -fOL "https://github.com/coder/code-server/releases/download/${LATEST_VERSION}/code-server_${LATEST_VERSION#v}_amd64.deb" && \
-    dpkg -i "code-server_${LATEST_VERSION#v}_amd64.deb" && \
-    rm -f "code-server_${LATEST_VERSION#v}_amd64.deb" && \
+    LATEST_TAG="$(curl -fsSL -o /dev/null -w '%{url_effective}' https://github.com/coder/code-server/releases/latest | awk -F'/tag/' '{print $2}' | cut -d'?' -f1 | cut -d'#' -f1)" && \
+    [ -n "${LATEST_TAG}" ] && [ "${LATEST_TAG}" != "https://github.com/coder/code-server/releases/latest" ] || (echo "Failed to resolve latest code-server tag" >&2; exit 1) && \
+    LATEST_VERSION="${LATEST_TAG#v}" && \
+    echo "Installing code-server ${LATEST_TAG}" && \
+    curl -fL "https://github.com/coder/code-server/releases/download/${LATEST_TAG}/code-server_${LATEST_VERSION}_amd64.deb" -o "/tmp/code-server_${LATEST_VERSION}_amd64.deb" && \
+    dpkg -i "/tmp/code-server_${LATEST_VERSION}_amd64.deb" && \
+    rm -f "/tmp/code-server_${LATEST_VERSION}_amd64.deb" && \
     # Verify installation
     which code-server && code-server --version
 

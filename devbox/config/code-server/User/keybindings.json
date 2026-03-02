@@ -73,4 +73,9 @@
         "command": "jump-extension.jump-to-the-start-of-a-word",
         "when": "editorTextFocus && vim.active && vim.mode == Normal"
     },
+    {
+        "key": "ctrl+cmd+c",
+        "command": "git.checkout",
+        "when": "!operationInProgress"
+    },
 ]

@@ -22,5 +22,13 @@
 		"tags": [],
 		"enabled": true,
 		"profile": ""
+	},
+	{
+		"name": "VibeCoding",
+		"rootPath": "/Projects/VibeCoding",
+		"paths": [],
+		"tags": [],
+		"enabled": true,
+		"profile": ""
 	}
 ]

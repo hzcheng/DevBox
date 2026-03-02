@@ -14,4 +14,7 @@
     "workbench.secondarySideBar.showLabels": false,
 
     "workbench.colorTheme": "Quiet Light",
+    "terminal.integrated.initialHint": false,
+    "claudeCode.preferredLocation": "panel",
+    "workbench.panel.showLabels": false,
 }
