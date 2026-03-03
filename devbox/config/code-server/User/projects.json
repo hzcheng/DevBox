@@ -8,14 +8,6 @@
 		"profile": ""
 	},
 	{
-		"name": "TDinternal",
-		"rootPath": "/Projects/TDinternal",
-		"paths": [],
-		"tags": [],
-		"enabled": true,
-		"profile": ""
-	},
-	{
 		"name": "work",
 		"rootPath": "/Projects/work",
 		"paths": [],

@@ -45,6 +45,9 @@ services:
       # ChatGPT Codex
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      # Git identity
+      - GIT_USER_NAME=${GIT_USER_NAME}
+      - GIT_USER_EMAIL=${GIT_USER_EMAIL}
     command: /usr/local/bin/start-services.sh
     security_opt:
       - seccomp:unconfined
