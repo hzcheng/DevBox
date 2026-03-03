@@ -18,4 +18,5 @@
     "claudeCode.preferredLocation": "panel",
     "workbench.panel.showLabels": false,
     "vim.useSystemClipboard": true,
+    "terminal.integrated.macOptionClickForcesSelection": true,
 }
