@@ -21,6 +21,7 @@ fi
 if [ -n "$GIT_USER_EMAIL" ]; then
     git config --global user.email "$GIT_USER_EMAIL"
 fi
+git config --global credential.helper store
 
 # Configure code-server
 mkdir -p /root/.config/code-server
