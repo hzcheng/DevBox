@@ -46,7 +46,6 @@ code-server --install-extension github.vscode-pull-request-github
 code-server --install-extension llvm-vs-code-extensions.vscode-clangd
 code-server --install-extension yzhang.markdown-all-in-one
 code-server --install-extension ms-toolsai.jupyter
-code-server --install-extension natizyskunk.sftp
 code-server --install-extension streetsidesoftware.code-spell-checker
 code-server --install-extension ms-python.autopep8
 code-server --install-extension ms-azuretools.vscode-docker
@@ -58,7 +57,6 @@ code-server --install-extension ryuta46.multi-command
 code-server --install-extension vscode-icons-team.vscode-icons
 code-server --install-extension alefragnani.project-manager
 code-server --install-extension saoudrizwan.claude-dev
-# code-server --install-extension kelvin.vscode-sshfs
 code-server --install-extension wenfangdu.jump   
 code-server --install-extension kylinideteam.cppdebug
 code-server --install-extension cweijan.vscode-ssh
