@@ -45,7 +45,6 @@ code-server --install-extension ms-python.python
 code-server --install-extension github.vscode-pull-request-github
 code-server --install-extension llvm-vs-code-extensions.vscode-clangd
 code-server --install-extension yzhang.markdown-all-in-one
-
 code-server --install-extension ms-toolsai.jupyter
 code-server --install-extension streetsidesoftware.code-spell-checker
 code-server --install-extension ms-python.autopep8
