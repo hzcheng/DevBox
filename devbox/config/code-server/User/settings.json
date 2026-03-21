@@ -19,4 +19,10 @@
     "workbench.panel.showLabels": false,
     "vim.useSystemClipboard": true,
     "terminal.integrated.macOptionClickForcesSelection": true,
+    "containers.containers.label": "ContainerName",
+    "chat.viewSessions.orientation": "stacked",
+    "chat.agentsControl.enabled": false,
+    "diffEditor.renderSideBySide": true,
+    "diffEditor.experimental.showMoves": true,
+    "githubPullRequests.hideViewedFiles": false,
 }

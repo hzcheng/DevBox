@@ -7,6 +7,13 @@
 # =============================================================================
 FROM mcr.microsoft.com/vscode/devcontainers/cpp:ubuntu-22.04 AS base
 
+ARG http_proxy
+ARG https_proxy
+ARG all_proxy
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG ALL_PROXY
+
 # Change source list
 RUN mv /etc/apt/sources.list /etc/apt/sources.list.bak && \
     echo "deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ jammy main restricted universe multiverse" > /etc/apt/sources.list && \
@@ -32,6 +39,9 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
     echo "Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")" >> /etc/apt/sources.list.d/docker.sources && \
     echo "Components: stable" >> /etc/apt/sources.list.d/docker.sources && \
     echo "Signed-By: /etc/apt/keyrings/docker.asc" >> /etc/apt/sources.list.d/docker.sources && \
+    # Add Bazel apt repository
+    curl -fsSL https://bazel.build/bazel-release.pub.gpg | gpg --dearmor > /etc/apt/keyrings/bazel-archive-keyring.gpg && \
+    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/bazel-archive-keyring.gpg] https://storage.googleapis.com/bazel-apt stable jdk1.8" > /etc/apt/sources.list.d/bazel.list && \
     # Update package lists
     apt-get update --fix-missing
 
@@ -41,7 +51,7 @@ RUN apt-get -y install --no-install-recommends \
     docker-ce-cli docker-compose-plugin docker-buildx-plugin \
     libjansson-dev libsnappy-dev \
     liblzma-dev libz-dev pkg-config libssl-dev graphviz \
-    locales \
+    locales golang-go bazel \
     && \
     # Set python3 as default
     update-alternatives --install /usr/bin/python python /usr/bin/python3 100 && \
@@ -67,7 +77,7 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
     ipykernel taos-ws-py taospy baostock tushare
 
 RUN apt-get -y install --no-install-recommends \
-    autoconf libtool automake autotools-dev
+    autoconf libtool automake autotools-dev screen
 
 # Install AI CLIs
 RUN npm install -g opencode-ai @anthropic-ai/claude-code @openai/codex
@@ -82,21 +92,30 @@ RUN curl -LsSf https://code.kimi.com/install.sh | bash
 # =============================================================================
 FROM base AS devbox
 
+ARG http_proxy
+ARG https_proxy
+ARG all_proxy
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG ALL_PROXY
+ARG CODE_SERVER_VERSION=4.106.3
+ARG CODE_SERVER_RELEASE_BASE_URL=https://github.com/coder/code-server/releases/download
+
 # Install SSH server
 RUN apt-get install -y --no-install-recommends openssh-server && \
     sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
     sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
     echo 'root:root' | chpasswd
 
-# Install code-server via .deb package (without GitHub API rate-limit dependency)
+# Install pinned code-server via .deb package for reproducible builds
 RUN apt-get update && \
-    LATEST_TAG="$(curl -fsSL -o /dev/null -w '%{url_effective}' https://github.com/coder/code-server/releases/latest | awk -F'/tag/' '{print $2}' | cut -d'?' -f1 | cut -d'#' -f1)" && \
-    [ -n "${LATEST_TAG}" ] && [ "${LATEST_TAG}" != "https://github.com/coder/code-server/releases/latest" ] || (echo "Failed to resolve latest code-server tag" >&2; exit 1) && \
-    LATEST_VERSION="${LATEST_TAG#v}" && \
-    echo "Installing code-server ${LATEST_TAG}" && \
-    curl -fL "https://github.com/coder/code-server/releases/download/${LATEST_TAG}/code-server_${LATEST_VERSION}_amd64.deb" -o "/tmp/code-server_${LATEST_VERSION}_amd64.deb" && \
-    dpkg -i "/tmp/code-server_${LATEST_VERSION}_amd64.deb" && \
-    rm -f "/tmp/code-server_${LATEST_VERSION}_amd64.deb" && \
+    CODE_SERVER_DEB="/tmp/code-server_${CODE_SERVER_VERSION}_amd64.deb" && \
+    echo "Installing code-server v${CODE_SERVER_VERSION}" && \
+    curl -fsSL --connect-timeout 20 --max-time 300 --retry 5 --retry-delay 2 --retry-all-errors \
+      "${CODE_SERVER_RELEASE_BASE_URL}/v${CODE_SERVER_VERSION}/code-server_${CODE_SERVER_VERSION}_amd64.deb" \
+      -o "${CODE_SERVER_DEB}" && \
+    dpkg -i "${CODE_SERVER_DEB}" && \
+    rm -f "${CODE_SERVER_DEB}" && \
     # Verify installation
     which code-server && code-server --version
 

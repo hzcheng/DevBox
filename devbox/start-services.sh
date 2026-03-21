@@ -36,6 +36,34 @@ EOF
 # Try multiple possible locations for code-server
 /usr/bin/code-server --config /root/.config/code-server/config.yaml /root/Projects &
 
+install_marketplace_vsix() {
+    local publisher="$1"
+    local extension="$2"
+    local version="$3"
+    local extension_id="$4"
+    local publisher_host
+    local vsix_path
+    local url
+
+    publisher_host="$(printf '%s' "${publisher}" | tr '[:upper:]' '[:lower:]')"
+    vsix_path="/tmp/${publisher_host}.${extension}-${version}.vsix"
+    url="https://${publisher_host}.gallery.vsassets.io/_apis/public/gallery/publisher/${publisher}/extension/${extension}/${version}/assetbyname/Microsoft.VisualStudio.Services.VSIXPackage?redirect=true"
+
+    curl -fL --retry 3 --retry-all-errors --connect-timeout 15 --max-time 300 \
+        "${url}" \
+        -o "${vsix_path}"
+
+    if [ "$(head -c 2 "${vsix_path}")" != "PK" ]; then
+        echo "downloaded file is not a valid VSIX archive: ${vsix_path}" >&2
+        echo "download url: ${url}" >&2
+        exit 1
+    fi
+
+    code-server --install-extension "${vsix_path}"
+    rm -f "${vsix_path}"
+    code-server --list-extensions | grep -Fx "${extension_id}" >/dev/null
+}
+
 # Install code server extensions
 code-server --install-extension llvm-vs-code-extensions.vscode-clangd
 code-server --install-extension ms-vscode.cmake-tools
@@ -61,6 +89,18 @@ code-server --install-extension saoudrizwan.claude-dev
 code-server --install-extension wenfangdu.jump   
 code-server --install-extension kylinideteam.cppdebug
 code-server --install-extension cweijan.vscode-ssh
+code-server --install-extension openai.chatgpt
+code-server --install-extension anthropic.claude-code
+
+# CodeWiz is published on the VS Code Marketplace, so install it from VSIX.
+CODEWIZ_VERSION="${CODEWIZ_VERSION:-0.0.2}"
+install_marketplace_vsix "felvin" "codewiz" "${CODEWIZ_VERSION}" "felvin.codewiz"
+
+# GitHub Copilot extensions are published on the VS Code Marketplace.
+COPILOT_VERSION="${COPILOT_VERSION:-latest}"
+COPILOT_CHAT_VERSION="${COPILOT_CHAT_VERSION:-latest}"
+install_marketplace_vsix "GitHub" "copilot" "${COPILOT_VERSION}" "GitHub.copilot"
+install_marketplace_vsix "GitHub" "copilot-chat" "${COPILOT_CHAT_VERSION}" "GitHub.copilot-chat"
 
 # Keep container running
 wait

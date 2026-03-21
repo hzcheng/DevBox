@@ -173,5 +173,34 @@
     {
         "key": "ctrl+9",
         "command": "-workbench.action.openEditorAtIndex9"
+    },
+    {
+        "key": "cmd+k o",
+        "command": "editor.action.peekDefinition",
+        "when": "editorHasDefinitionProvider && !inReferenceSearchEditor && !isInEmbeddedEditor"
+    },
+    {
+        "key": "ctrl+cmd+k",
+        "command": "cmake.outline.toggleBookmark"
+    },
+    {
+        "key": "shift+cmd+h",
+        "command": "workbench.action.focusLeftGroup"
+    },
+    {
+        "key": "cmd+k cmd+left",
+        "command": "-workbench.action.focusLeftGroup"
+    },
+    {
+        "key": "shift+cmd+l",
+        "command": "workbench.action.focusRightGroup"
+    },
+    {
+        "key": "cmd+'",
+        "command": "chatgpt.addToThread"
+    },
+    {
+        "key": "shift+cmd+'",
+        "command": "chatgpt.addFileToThread"
     }
 ]

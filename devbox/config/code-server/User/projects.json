@@ -22,5 +22,37 @@
 		"tags": [],
 		"enabled": true,
 		"profile": ""
+	},
+	{
+		"name": "doris",
+		"rootPath": "/Projects/doris",
+		"paths": [],
+		"tags": [],
+		"enabled": true,
+		"profile": ""
+	},
+	{
+		"name": "elasticsearch",
+		"rootPath": "/Projects/work/elasticsearch",
+		"paths": [],
+		"tags": [],
+		"enabled": true,
+		"profile": ""
+	},
+	{
+		"name": "milvus",
+		"rootPath": "/Projects/milvus",
+		"paths": [],
+		"tags": [],
+		"enabled": true,
+		"profile": ""
+	},
+	{
+		"name": "reddb",
+		"rootPath": "/Projects/work/reddb",
+		"paths": [],
+		"tags": [],
+		"enabled": true,
+		"profile": ""
 	}
 ]

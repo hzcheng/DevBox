@@ -1,9 +1,18 @@
 services:
   devbox:
-    build: 
+    build:
       context: .
       dockerfile: Dockerfile.${ARCH}
       network: host
+      args:
+        CODE_SERVER_VERSION: ${CODE_SERVER_VERSION:-4.106.3}
+        CODE_SERVER_RELEASE_BASE_URL: ${CODE_SERVER_RELEASE_BASE_URL:-https://github.com/coder/code-server/releases/download}
+        http_proxy: ${PROXY}
+        https_proxy: ${PROXY}
+        all_proxy: ${PROXY}
+        HTTP_PROXY: ${PROXY}
+        HTTPS_PROXY: ${PROXY}
+        ALL_PROXY: ${PROXY}
     image: home.teraai.cn/hzcheng/devbox:${ARCH}
     container_name: ${PROJECT_NAME}-devbox
     restart: unless-stopped
