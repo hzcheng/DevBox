@@ -468,6 +468,7 @@ install_extensions_async() {
         "cweijan.vscode-ssh"
         "openai.chatgpt"
         "anthropic.claude-code"
+        "moonshot-ai.kimi-code"
     )
     
     # 安装 OpenVSX 插件
@@ -487,24 +488,6 @@ install_extensions_async() {
         log_info "Successfully installed: felvin.codewiz"
     else
         log_warn "Failed to install: felvin.codewiz"
-    fi
-    
-    # 安装 GitHub Copilot 插件
-    local copilot_version="${COPILOT_VERSION:-latest}"
-    local copilot_chat_version="${COPILOT_CHAT_VERSION:-latest}"
-    
-    log_info "Installing GitHub Copilot extension..."
-    if install_marketplace_vsix_for_code_version "GitHub" "copilot" "${copilot_version}" "GitHub.copilot"; then
-        log_info "Successfully installed: GitHub.copilot"
-    else
-        log_warn "Failed to install: GitHub.copilot"
-    fi
-    
-    log_info "Installing GitHub Copilot Chat extension..."
-    if install_marketplace_vsix_for_code_version "GitHub" "copilot-chat" "${copilot_chat_version}" "GitHub.copilot-chat"; then
-        log_info "Successfully installed: GitHub.copilot-chat"
-    else
-        log_warn "Failed to install: GitHub.copilot-chat"
     fi
     
     log_info "Extension installation completed!"

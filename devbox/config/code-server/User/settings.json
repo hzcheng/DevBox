@@ -1,6 +1,12 @@
 {
     "workbench.iconTheme": "vscode-icons",
     "terminal.integrated.macOptionIsMeta": true,
+
+    // Kimi Code 配置
+    "kimi.yoloMode": false,
+    "kimi.autosave": true,
+    "kimi.enableNewConversationShortcut": true,
+    "kimi.useCtrlEnterToSend": false,
     "extensions.experimental.affinity": {
         "asvetliakov.vscode-neovim": 1
     },
