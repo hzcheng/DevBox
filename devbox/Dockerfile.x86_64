@@ -98,7 +98,7 @@ ARG all_proxy
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG ALL_PROXY
-ARG CODE_SERVER_VERSION=4.106.3
+ARG CODE_SERVER_VERSION=latest
 ARG CODE_SERVER_RELEASE_BASE_URL=https://github.com/coder/code-server/releases/download
 
 # Install SSH server
@@ -107,12 +107,19 @@ RUN apt-get install -y --no-install-recommends openssh-server && \
     sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
     echo 'root:root' | chpasswd
 
-# Install pinned code-server via .deb package for reproducible builds
+# Install the latest code-server by default while still allowing explicit pinning.
 RUN apt-get update && \
-    CODE_SERVER_DEB="/tmp/code-server_${CODE_SERVER_VERSION}_amd64.deb" && \
-    echo "Installing code-server v${CODE_SERVER_VERSION}" && \
+    RESOLVED_CODE_SERVER_VERSION="${CODE_SERVER_VERSION}" && \
+    if [ -z "${RESOLVED_CODE_SERVER_VERSION}" ] || [ "${RESOLVED_CODE_SERVER_VERSION}" = "latest" ]; then \
+      LATEST_RELEASE_URL="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/coder/code-server/releases/latest)" && \
+      RESOLVED_CODE_SERVER_VERSION="${LATEST_RELEASE_URL##*/}" && \
+      RESOLVED_CODE_SERVER_VERSION="${RESOLVED_CODE_SERVER_VERSION#v}" && \
+      test -n "${RESOLVED_CODE_SERVER_VERSION}"; \
+    fi && \
+    CODE_SERVER_DEB="/tmp/code-server_${RESOLVED_CODE_SERVER_VERSION}_amd64.deb" && \
+    echo "Installing code-server v${RESOLVED_CODE_SERVER_VERSION}" && \
     curl -fsSL --connect-timeout 20 --max-time 300 --retry 5 --retry-delay 2 --retry-all-errors \
-      "${CODE_SERVER_RELEASE_BASE_URL}/v${CODE_SERVER_VERSION}/code-server_${CODE_SERVER_VERSION}_amd64.deb" \
+      "${CODE_SERVER_RELEASE_BASE_URL}/v${RESOLVED_CODE_SERVER_VERSION}/code-server_${RESOLVED_CODE_SERVER_VERSION}_amd64.deb" \
       -o "${CODE_SERVER_DEB}" && \
     dpkg -i "${CODE_SERVER_DEB}" && \
     rm -f "${CODE_SERVER_DEB}" && \

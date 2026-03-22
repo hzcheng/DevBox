@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile.${ARCH}
       network: host
       args:
-        CODE_SERVER_VERSION: ${CODE_SERVER_VERSION:-4.106.3}
+        CODE_SERVER_VERSION: ${CODE_SERVER_VERSION:-latest}
         CODE_SERVER_RELEASE_BASE_URL: ${CODE_SERVER_RELEASE_BASE_URL:-https://github.com/coder/code-server/releases/download}
         http_proxy: ${PROXY}
         https_proxy: ${PROXY}
@@ -42,6 +42,14 @@ services:
       - ASAN_OPTIONS=abort_on_error=1:disable_coredump=0:unmap_shadow_on_exit=1
       - http_proxy=${PROXY}
       - https_proxy=${PROXY}
+      - CODE_SERVER_VERSION=${CODE_SERVER_VERSION:-latest}
+      - CODE_SERVER_RELEASE_BASE_URL=${CODE_SERVER_RELEASE_BASE_URL:-https://github.com/coder/code-server/releases/download}
+      - CODE_SERVER_AUTH=${CODE_SERVER_AUTH:-password}
+      - CODE_SERVER_PASSWORD=${CODE_SERVER_PASSWORD:-devbox}
+      - SSH_PUBLIC_KEY=${SSH_PUBLIC_KEY}
+      - CODEWIZ_VERSION=${CODEWIZ_VERSION:-latest}
+      - COPILOT_VERSION=${COPILOT_VERSION:-latest}
+      - COPILOT_CHAT_VERSION=${COPILOT_CHAT_VERSION:-latest}
       # DeepSeek
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - DEEPSEEK_API_URL=${DEEPSEEK_API_URL:-https://api.deepseek.com}
