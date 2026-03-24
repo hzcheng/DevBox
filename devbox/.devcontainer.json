@@ -37,7 +37,10 @@
                 "leetcode.vscode-leetcode",
                 "bierner.markdown-preview-github-styles",
                 "bierner.markdown-mermaid",
-                "Kelvin.vscode-sshfs"
+                "Kelvin.vscode-sshfs",
+                "moonshot-ai.kimi-code",
+                "openai.chatgpt",
+                "Anthropic.claude-code"
             ]
         }
     },

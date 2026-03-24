@@ -13,6 +13,10 @@ ARG all_proxy
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG ALL_PROXY
+ARG GO_VERSION=latest
+
+ENV GOROOT=/usr/local/go
+ENV PATH="${GOROOT}/bin:${PATH}"
 
 # Change source list
 RUN mv /etc/apt/sources.list /etc/apt/sources.list.bak && \
@@ -51,13 +55,38 @@ RUN apt-get -y install --no-install-recommends \
     docker-ce-cli docker-compose-plugin docker-buildx-plugin \
     libjansson-dev libsnappy-dev \
     liblzma-dev libz-dev pkg-config libssl-dev graphviz \
-    locales golang-go bazel \
+    locales bazel \
     && \
     # Set python3 as default
     update-alternatives --install /usr/bin/python python /usr/bin/python3 100 && \
     # Generate Chinese locale
     locale-gen zh_CN.UTF-8 && \
     update-locale LANG=zh_CN.UTF-8
+
+# Install the latest stable Go by default while still allowing explicit pinning.
+RUN RESOLVED_GO_VERSION="${GO_VERSION}" && \
+    GO_ARCH="$(dpkg --print-architecture)" && \
+    case "${GO_ARCH}" in \
+      amd64) GO_DOWNLOAD_ARCH="amd64" ;; \
+      arm64) GO_DOWNLOAD_ARCH="arm64" ;; \
+      *) echo "Unsupported Go architecture: ${GO_ARCH}" >&2; exit 1 ;; \
+    esac && \
+    if [ -z "${RESOLVED_GO_VERSION}" ] || [ "${RESOLVED_GO_VERSION}" = "latest" ]; then \
+      RESOLVED_GO_VERSION="$(python3 -c 'import json, urllib.request; releases = json.load(urllib.request.urlopen("https://go.dev/dl/?mode=json")); print(next(release["version"][2:] for release in releases if release.get("stable")))' )" && \
+      test -n "${RESOLVED_GO_VERSION}"; \
+    fi && \
+    GO_TARBALL="go${RESOLVED_GO_VERSION}.linux-${GO_DOWNLOAD_ARCH}.tar.gz" && \
+    GO_SHA256="$(python3 -c 'import json, sys, urllib.request; version = f"go{sys.argv[1]}"; filename = f"{version}.linux-{sys.argv[2]}.tar.gz"; releases = json.load(urllib.request.urlopen("https://go.dev/dl/?mode=json&include=all")); print(next(artifact["sha256"] for release in releases if release.get("version") == version for artifact in release.get("files", []) if artifact.get("filename") == filename))' "${RESOLVED_GO_VERSION}" "${GO_DOWNLOAD_ARCH}")" && \
+    GO_ARCHIVE="/tmp/${GO_TARBALL}" && \
+    echo "Installing Go ${RESOLVED_GO_VERSION} for ${GO_DOWNLOAD_ARCH}" && \
+    curl -fsSL --connect-timeout 20 --max-time 300 --retry 5 --retry-delay 2 --retry-all-errors \
+      "https://go.dev/dl/${GO_TARBALL}" \
+      -o "${GO_ARCHIVE}" && \
+    echo "${GO_SHA256}  ${GO_ARCHIVE}" | sha256sum -c - && \
+    rm -rf "${GOROOT}" && \
+    tar -C /usr/local -xzf "${GO_ARCHIVE}" && \
+    rm -f "${GO_ARCHIVE}" && \
+    go version
 
 # Install nodejs and npm
 RUN apt-get remove -y nodejs && \

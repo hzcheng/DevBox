@@ -1,64 +1,175 @@
 # docker build --no-cache -t hzcheng/ubuntu:22.04.arm64 -f ./docker/Dockerfile.ubuntu-22.04.arm64 .
 # docker run -it --rm hzcheng/ubuntu:22.04.arm64 bash
 
-# Base image
-FROM mcr.microsoft.com/vscode/devcontainers/cpp:ubuntu-22.04
+# =============================================================================
+# Stage 1: Base image with all development tools
+# This stage contains all the heavy dependencies that rarely change
+# =============================================================================
+FROM mcr.microsoft.com/vscode/devcontainers/cpp:ubuntu-22.04 AS base
+
+ARG http_proxy
+ARG https_proxy
+ARG all_proxy
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG ALL_PROXY
+ARG GO_VERSION=latest
+
+ENV GOROOT=/usr/local/go
+ENV PATH="${GOROOT}/bin:${PATH}"
 
 # Change timezone
 ENV TZ="Asia/Shanghai"
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-# Change source list
+# Change source list (using ubuntu-ports for ARM64)
 RUN mv /etc/apt/sources.list /etc/apt/sources.list.bak && \
     echo "deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ jammy main restricted universe multiverse" > /etc/apt/sources.list && \
     echo "deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ jammy-updates main restricted universe multiverse" >> /etc/apt/sources.list && \
     echo "deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ jammy-backports main restricted universe multiverse" >> /etc/apt/sources.list
 
-# Install common dependencies
+# Prepare for adding repositories
 RUN export DEBIAN_FRONTEND=noninteractive && \
-    apt-get update && apt-get install -y software-properties-common wget curl gnupg lsb-release
-
-# Add repositories
-RUN \
+    apt-get update && \
+    apt-get install -y \
+    software-properties-common ca-certificates wget curl gnupg lsb-release inetutils-ping && \
     # Add LLVM apt repository
     wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add - && \
     add-apt-repository "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-20 main" && \
     # Add Node.js apt repository
-    curl -fsSL https://deb.nodesource.com/setup_current.x | bash -
+    curl -fsSL https://deb.nodesource.com/setup_current.x | bash - && \
+    # Add Docker apt repository
+    install -m 0755 -d /etc/apt/keyrings && \
+    curl -fsSL https://mirrors.tuna.tsinghua.edu.cn/docker-ce/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc && \
+    chmod a+r /etc/apt/keyrings/docker.asc && \
+    echo "Types: deb" > /etc/apt/sources.list.d/docker.sources && \
+    echo "URIs: https://download.docker.com/linux/ubuntu" >> /etc/apt/sources.list.d/docker.sources && \
+    echo "Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")" >> /etc/apt/sources.list.d/docker.sources && \
+    echo "Components: stable" >> /etc/apt/sources.list.d/docker.sources && \
+    echo "Signed-By: /etc/apt/keyrings/docker.asc" >> /etc/apt/sources.list.d/docker.sources && \
+    # Note: Bazel official apt repository does not support ARM64, using Bazelisk instead
+    # Update package lists
+    apt-get update --fix-missing
 
-# Install packages
-RUN export DEBIAN_FRONTEND=noninteractive && \
-    apt-get update && \
-    apt-get -y install --no-install-recommends tree vim tmux python3-pip && \
-    apt-get -y install --no-install-recommends libjansson-dev libsnappy-dev && \
-    apt-get -y install --no-install-recommends liblzma-dev libz-dev pkg-config libssl-dev tldr graphviz &&\
-    apt-get -y install --no-install-recommends inetutils-ping openssh-server golang openjdk-11-jdk docker.io &&\
-    apt-get -y install --no-install-recommends docker-compose clangd-20 redis-tools mysql-client postgresql-client && \
-    # Install Node.js
-    apt-get remove -y nodejs && \
-    apt-get install -y nodejs && \
-    npm install -g npm@latest && \
-    # Set clangd-20 as default
-    update-alternatives --install /usr/bin/clangd clangd /usr/bin/clangd-20 100 && \
+# Install packages and Chinese locale
+RUN apt-get -y install --no-install-recommends \
+    tree vim tmux python3-pip tldr patchelf \
+    docker-ce-cli docker-compose-plugin docker-buildx-plugin \
+    libjansson-dev libsnappy-dev \
+    liblzma-dev libz-dev pkg-config libssl-dev graphviz \
+    locales \
+    && \
     # Set python3 as default
-    update-alternatives --install /usr/bin/python python /usr/bin/python3 100
+    update-alternatives --install /usr/bin/python python /usr/bin/python3 100 && \
+    # Generate Chinese locale
+    locale-gen zh_CN.UTF-8 && \
+    update-locale LANG=zh_CN.UTF-8
+
+# Install the latest stable Go by default while still allowing explicit pinning.
+RUN RESOLVED_GO_VERSION="${GO_VERSION}" && \
+    GO_ARCH="$(dpkg --print-architecture)" && \
+    case "${GO_ARCH}" in \
+      amd64) GO_DOWNLOAD_ARCH="amd64" ;; \
+      arm64) GO_DOWNLOAD_ARCH="arm64" ;; \
+      *) echo "Unsupported Go architecture: ${GO_ARCH}" >&2; exit 1 ;; \
+    esac && \
+    if [ -z "${RESOLVED_GO_VERSION}" ] || [ "${RESOLVED_GO_VERSION}" = "latest" ]; then \
+      RESOLVED_GO_VERSION="$(python3 -c 'import json, urllib.request; releases = json.load(urllib.request.urlopen("https://go.dev/dl/?mode=json")); print(next(release["version"][2:] for release in releases if release.get("stable")))' )" && \
+      test -n "${RESOLVED_GO_VERSION}"; \
+    fi && \
+    GO_TARBALL="go${RESOLVED_GO_VERSION}.linux-${GO_DOWNLOAD_ARCH}.tar.gz" && \
+    GO_SHA256="$(python3 -c 'import json, sys, urllib.request; version = f"go{sys.argv[1]}"; filename = f"{version}.linux-{sys.argv[2]}.tar.gz"; releases = json.load(urllib.request.urlopen("https://go.dev/dl/?mode=json&include=all")); print(next(artifact["sha256"] for release in releases if release.get("version") == version for artifact in release.get("files", []) if artifact.get("filename") == filename))' "${RESOLVED_GO_VERSION}" "${GO_DOWNLOAD_ARCH}")" && \
+    GO_ARCHIVE="/tmp/${GO_TARBALL}" && \
+    echo "Installing Go ${RESOLVED_GO_VERSION} for ${GO_DOWNLOAD_ARCH}" && \
+    curl -fsSL --connect-timeout 20 --max-time 300 --retry 5 --retry-delay 2 --retry-all-errors \
+      "https://go.dev/dl/${GO_TARBALL}" \
+      -o "${GO_ARCHIVE}" && \
+    echo "${GO_SHA256}  ${GO_ARCHIVE}" | sha256sum -c - && \
+    rm -rf "${GOROOT}" && \
+    tar -C /usr/local -xzf "${GO_ARCHIVE}" && \
+    rm -f "${GO_ARCHIVE}" && \
+    go version
+
+# Install nodejs and npm
+RUN apt-get remove -y nodejs && \
+    apt-get install -y nodejs && \
+    npm install -g npm@latest
+
+# Install clangd-20
+RUN apt-get install -y --no-install-recommends clangd-20 && \
+    update-alternatives --install /usr/bin/clangd clangd /usr/bin/clangd-20 100
 
 # Install python packages
 RUN export DEBIAN_FRONTEND=noninteractive && \
     pip3 install --upgrade pip && \
-    pip3 install numpy fabric2 psutil pandas toml distro && \
-    pip3 install faker gprof2dot tzlocal matplotlib ipykernel taos-ws-py taospy baostock tushare
+    pip3 install \
+    numpy fabric2 psutil pandas toml distro \
+    faker gprof2dot tzlocal matplotlib \
+    ipykernel taos-ws-py taospy baostock tushare
 
-RUN export DEBIAN_FRONTEND=noninteractive && \
-    apt-get install -y patchelf
+# Install Bazelisk for ARM64 (Bazel's official apt repo doesn't support ARM64)
+RUN curl -Lo /usr/local/bin/bazel https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-arm64 && \
+    chmod +x /usr/local/bin/bazel
 
-# Install latest stable Neovim
-RUN cd /tmp && \
-    curl -LO https://github.com/neovim/neovim/releases/latest/download/nvim-linux-arm64.tar.gz && \
-    tar xzf nvim-linux-arm64.tar.gz && \
-    mv nvim-linux-arm64 /opt/nvim && \
-    rm nvim-linux-arm64.tar.gz && \
-    ln -sf /opt/nvim/bin/nvim /usr/local/bin/nvim
+RUN apt-get -y install --no-install-recommends \
+    autoconf libtool automake autotools-dev screen
 
-# Copy Neovim configuration
-COPY ./nvim /root/.config/nvim
+# Install AI CLIs
+RUN npm install -g opencode-ai @anthropic-ai/claude-code @openai/codex
+
+# Install kimi code
+ENV PATH="/root/.local/bin:$PATH"
+RUN curl -LsSf https://code.kimi.com/install.sh | bash
+
+# =============================================================================
+# Stage 2: Final image with SSH and code-server
+# This stage adds services that may change more frequently
+# =============================================================================
+FROM base AS devbox
+
+ARG http_proxy
+ARG https_proxy
+ARG all_proxy
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG ALL_PROXY
+ARG CODE_SERVER_VERSION=latest
+ARG CODE_SERVER_RELEASE_BASE_URL=https://github.com/coder/code-server/releases/download
+
+# Install SSH server
+RUN apt-get install -y --no-install-recommends openssh-server && \
+    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
+    echo 'root:root' | chpasswd
+
+# Install the latest code-server by default while still allowing explicit pinning.
+RUN apt-get update && \
+    RESOLVED_CODE_SERVER_VERSION="${CODE_SERVER_VERSION}" && \
+    if [ -z "${RESOLVED_CODE_SERVER_VERSION}" ] || [ "${RESOLVED_CODE_SERVER_VERSION}" = "latest" ]; then \
+      LATEST_RELEASE_URL="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/coder/code-server/releases/latest)" && \
+      RESOLVED_CODE_SERVER_VERSION="${LATEST_RELEASE_URL##*/}" && \
+      RESOLVED_CODE_SERVER_VERSION="${RESOLVED_CODE_SERVER_VERSION#v}" && \
+      test -n "${RESOLVED_CODE_SERVER_VERSION}"; \
+    fi && \
+    CODE_SERVER_DEB="/tmp/code-server_${RESOLVED_CODE_SERVER_VERSION}_arm64.deb" && \
+    echo "Installing code-server v${RESOLVED_CODE_SERVER_VERSION}" && \
+    curl -fsSL --connect-timeout 20 --max-time 300 --retry 5 --retry-delay 2 --retry-all-errors \
+      "${CODE_SERVER_RELEASE_BASE_URL}/v${RESOLVED_CODE_SERVER_VERSION}/code-server_${RESOLVED_CODE_SERVER_VERSION}_arm64.deb" \
+      -o "${CODE_SERVER_DEB}" && \
+    dpkg -i "${CODE_SERVER_DEB}" && \
+    rm -f "${CODE_SERVER_DEB}" && \
+    # Verify installation
+    which code-server && code-server --version
+
+# Create code-server config directory
+RUN mkdir -p /root/.config/code-server
+
+COPY ./tmux.conf /root/.tmux.conf
+RUN sed -i 's/\r$//' /root/.tmux.conf
+
+# Copy startup script to a location that won't be overwritten by volume mounts
+COPY ./start-services.sh /usr/local/bin/start-services.sh
+RUN sed -i 's/\r$//' /usr/local/bin/start-services.sh && chmod +x /usr/local/bin/start-services.sh
+
+# Expose code-server port
+EXPOSE 8080 22
