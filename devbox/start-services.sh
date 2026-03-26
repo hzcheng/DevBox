@@ -30,7 +30,8 @@ CODEWIZ_DEFAULT_API_KEY="QST2332f67caa6bdce8ae9fbd3524bdf2fa"
 # CodeWiz Proxy 环境片段管理
 # ============================================
 write_codewiz_profile_snippet() {
-    local resolved_key="$1"
+    local resolved_port="$1"
+    local resolved_key="$2"
     local escaped_key
     
     escaped_key="${resolved_key//\'/\'\"\'\"\'}"
@@ -38,13 +39,24 @@ write_codewiz_profile_snippet() {
     log_info "Writing CodeWiz Claude environment snippet to ${CODEWIZ_PROFILE_SNIPPET}..."
     mkdir -p "$(dirname "${CODEWIZ_PROFILE_SNIPPET}")"
     cat > "${CODEWIZ_PROFILE_SNIPPET}" <<EOF
-export ANTHROPIC_BASE_URL="http://127.0.0.1:${CODEWIZ_PROXY_PORT:-8088}"
+export ANTHROPIC_BASE_URL="http://127.0.0.1:${resolved_port}"
 export ANTHROPIC_API_KEY='${escaped_key}'
 EOF
 }
 
 resolve_codewiz_api_key() {
     printf '%s\n' "${CODEWIZ_API_KEY:-${CODEWIZ_DEFAULT_API_KEY}}"
+}
+
+resolve_codewiz_proxy_port() {
+    local candidate="${CODEWIZ_PROXY_PORT:-8088}"
+    
+    if [[ "${candidate}" =~ ^[0-9]+$ ]] && [ "${candidate}" -ge 1 ] && [ "${candidate}" -le 65535 ]; then
+        printf '%s\n' "${candidate}"
+        return 0
+    fi
+    
+    return 1
 }
 
 export_codewiz_api_key() {
@@ -83,7 +95,7 @@ is_port_in_use() {
 }
 
 start_codewiz_proxy() {
-    local port="${CODEWIZ_PROXY_PORT:-8088}"
+    local port
     
     if [ -z "${CODEWIZ_SESSION_TOKEN}" ]; then
         log_warn "CODEWIZ_SESSION_TOKEN is not set; skipping CodeWiz proxy startup."
@@ -93,6 +105,12 @@ start_codewiz_proxy() {
     
     if [ -z "${CODEWIZ_USER_EMAIL}" ]; then
         log_warn "CODEWIZ_USER_EMAIL is not set; skipping CodeWiz proxy startup."
+        clear_codewiz_profile_snippet
+        return 0
+    fi
+    
+    if ! port="$(resolve_codewiz_proxy_port)"; then
+        log_warn "CODEWIZ_PROXY_PORT must be a numeric TCP port; skipping CodeWiz proxy startup."
         clear_codewiz_profile_snippet
         return 0
     fi
@@ -127,7 +145,7 @@ start_codewiz_proxy() {
     fi
     
     printf '%s\n' "${proxy_pid}" > "${CODEWIZ_PROXY_PID_FILE}"
-    write_codewiz_profile_snippet "${resolved_key}"
+    write_codewiz_profile_snippet "${port}" "${resolved_key}"
     log_info "CodeWiz proxy started (PID: ${proxy_pid})."
 }
 
