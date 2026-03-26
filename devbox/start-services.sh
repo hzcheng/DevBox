@@ -18,6 +18,102 @@ log_error() {
 }
 
 # ============================================
+# CodeWiz Proxy 常量与路径
+# ============================================
+CODEWIZ_PROXY_SCRIPT="${CODEWIZ_PROXY_SCRIPT:-/Projects/Repos/codewiz-proxy/proxy.py}"
+CODEWIZ_PROXY_PID_FILE="/var/run/codewiz-proxy.pid"
+CODEWIZ_PROXY_LOG_FILE="/var/log/codewiz-proxy.log"
+CODEWIZ_PROFILE_SNIPPET="/etc/profile.d/devbox-codewiz.sh"
+CODEWIZ_DEFAULT_API_KEY="QST2332f67caa6bdce8ae9fbd3524bdf2fa"
+
+# ============================================
+# CodeWiz Proxy 环境片段管理
+# ============================================
+write_codewiz_profile_snippet() {
+    log_info "Writing CodeWiz Claude environment snippet to ${CODEWIZ_PROFILE_SNIPPET}..."
+    mkdir -p "$(dirname "${CODEWIZ_PROFILE_SNIPPET}")"
+    cat > "${CODEWIZ_PROFILE_SNIPPET}" <<'EOF'
+export ANTHROPIC_BASE_URL="http://127.0.0.1:${CODEWIZ_PROXY_PORT:-8088}"
+EOF
+}
+
+export_codewiz_api_key() {
+    local resolved_key="${CODEWIZ_API_KEY:-${CODEWIZ_DEFAULT_API_KEY}}"
+    export CODEWIZ_API_KEY="${resolved_key}"
+    export ANTHROPIC_API_KEY="${resolved_key}"
+}
+
+clear_codewiz_profile_snippet() {
+    if [ -f "${CODEWIZ_PROFILE_SNIPPET}" ]; then
+        log_info "Removing CodeWiz Claude environment snippet from ${CODEWIZ_PROFILE_SNIPPET}..."
+        rm -f "${CODEWIZ_PROFILE_SNIPPET}"
+    fi
+}
+
+is_port_in_use() {
+    local port="$1"
+    
+    if command -v ss >/dev/null 2>&1; then
+        ss -ltn 2>/dev/null | awk 'NR>1 {print $4}' | grep -qE "[:.]${port}$"
+        return $?
+    fi
+    
+    if command -v lsof >/dev/null 2>&1; then
+        lsof -iTCP:"${port}" -sTCP:LISTEN -P -n >/dev/null 2>&1
+        return $?
+    fi
+    
+    if command -v nc >/dev/null 2>&1; then
+        nc -z 127.0.0.1 "${port}" >/dev/null 2>&1
+        return $?
+    fi
+    
+    return 1
+}
+
+start_codewiz_proxy() {
+    local port="${CODEWIZ_PROXY_PORT:-8088}"
+    
+    if [ -z "${CODEWIZ_SESSION_TOKEN}" ]; then
+        log_warn "CODEWIZ_SESSION_TOKEN is not set; skipping CodeWiz proxy startup."
+        return 0
+    fi
+    
+    if [ -z "${CODEWIZ_USER_EMAIL}" ]; then
+        log_warn "CODEWIZ_USER_EMAIL is not set; skipping CodeWiz proxy startup."
+        return 0
+    fi
+    
+    if [ ! -f "${CODEWIZ_PROXY_SCRIPT}" ]; then
+        log_warn "CodeWiz proxy script not found at ${CODEWIZ_PROXY_SCRIPT}; skipping startup."
+        return 0
+    fi
+    
+    if is_port_in_use "${port}"; then
+        log_warn "Port ${port} is already in use; skipping CodeWiz proxy startup."
+        return 0
+    fi
+    
+    export_codewiz_api_key
+    mkdir -p "$(dirname "${CODEWIZ_PROXY_PID_FILE}")"
+    mkdir -p "$(dirname "${CODEWIZ_PROXY_LOG_FILE}")"
+    
+    log_info "Starting CodeWiz proxy on port ${port}..."
+    python3 "${CODEWIZ_PROXY_SCRIPT}" --log-file "${CODEWIZ_PROXY_LOG_FILE}" &
+    local proxy_pid=$!
+    
+    sleep 1
+    if ! kill -0 "${proxy_pid}" >/dev/null 2>&1; then
+        log_warn "CodeWiz proxy failed to start; skipping."
+        return 0
+    fi
+    
+    printf '%s\n' "${proxy_pid}" > "${CODEWIZ_PROXY_PID_FILE}"
+    write_codewiz_profile_snippet
+    log_info "CodeWiz proxy started (PID: ${proxy_pid})."
+}
+
+# ============================================
 # SSH 服务管理
 # ============================================
 setup_ssh() {
