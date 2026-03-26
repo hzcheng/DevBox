@@ -31,12 +31,15 @@ CODEWIZ_DEFAULT_API_KEY="QST2332f67caa6bdce8ae9fbd3524bdf2fa"
 # ============================================
 write_codewiz_profile_snippet() {
     local resolved_key="$1"
+    local escaped_key
+    
+    escaped_key="${resolved_key//\'/\'\"\'\"\'}"
     
     log_info "Writing CodeWiz Claude environment snippet to ${CODEWIZ_PROFILE_SNIPPET}..."
     mkdir -p "$(dirname "${CODEWIZ_PROFILE_SNIPPET}")"
     cat > "${CODEWIZ_PROFILE_SNIPPET}" <<EOF
 export ANTHROPIC_BASE_URL="http://127.0.0.1:${CODEWIZ_PROXY_PORT:-8088}"
-export ANTHROPIC_API_KEY="${resolved_key}"
+export ANTHROPIC_API_KEY='${escaped_key}'
 EOF
 }
 
