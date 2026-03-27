@@ -48,6 +48,12 @@ resolve_codewiz_api_key() {
     printf '%s\n' "${CODEWIZ_API_KEY:-${CODEWIZ_DEFAULT_API_KEY}}"
 }
 
+normalize_codewiz_proxy_env() {
+    if [ -z "${CODEWIZ_TARGET_URL:-}" ]; then
+        unset CODEWIZ_TARGET_URL
+    fi
+}
+
 resolve_codewiz_proxy_port() {
     local candidate="${CODEWIZ_PROXY_PORT:-8088}"
     
@@ -129,6 +135,7 @@ start_codewiz_proxy() {
     
     local resolved_key
     resolved_key="$(resolve_codewiz_api_key)"
+    normalize_codewiz_proxy_env
     export_codewiz_api_key
     mkdir -p "$(dirname "${CODEWIZ_PROXY_PID_FILE}")"
     mkdir -p "$(dirname "${CODEWIZ_PROXY_LOG_FILE}")"
