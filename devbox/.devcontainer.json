@@ -40,7 +40,8 @@
                 "Kelvin.vscode-sshfs",
                 "moonshot-ai.kimi-code",
                 "openai.chatgpt",
-                "Anthropic.claude-code"
+                "Anthropic.claude-code",
+                "OrenMaoz.markco"
             ]
         }
     },
