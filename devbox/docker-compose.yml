@@ -15,7 +15,7 @@ services:
         HTTP_PROXY: ${PROXY}
         HTTPS_PROXY: ${PROXY}
         ALL_PROXY: ${PROXY}
-    image: home.teraai.cn/hzcheng/devbox:local
+    image: home.teraai.cn/hzcheng/devbox:${ARCH:-local}
     container_name: ${PROJECT_NAME}-devbox
     restart: unless-stopped
     ulimits:

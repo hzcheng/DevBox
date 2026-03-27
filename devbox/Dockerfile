@@ -25,6 +25,7 @@ ENV TZ="Asia/Shanghai"
 RUN EFFECTIVE_ARCH="${TARGETARCH_OVERRIDE:-${TARGETARCH}}" && \
     if [ -z "${EFFECTIVE_ARCH}" ]; then EFFECTIVE_ARCH="$(dpkg --print-architecture)"; fi && \
     case "${EFFECTIVE_ARCH}" in \
+      x86_64) EFFECTIVE_ARCH="amd64" ;; \
       amd64) UBUNTU_MIRROR_ROOT="ubuntu" ;; \
       arm64) UBUNTU_MIRROR_ROOT="ubuntu-ports" ;; \
       *) echo "Unsupported target architecture: ${EFFECTIVE_ARCH}" >&2; exit 1 ;; \
@@ -40,6 +41,7 @@ RUN EFFECTIVE_ARCH="${TARGETARCH_OVERRIDE:-${TARGETARCH}}" && \
 RUN EFFECTIVE_ARCH="${TARGETARCH_OVERRIDE:-${TARGETARCH}}" && \
     if [ -z "${EFFECTIVE_ARCH}" ]; then EFFECTIVE_ARCH="$(dpkg --print-architecture)"; fi && \
     case "${EFFECTIVE_ARCH}" in \
+      x86_64) EFFECTIVE_ARCH="amd64" ;; \
       amd64|arm64) ;; \
       *) echo "Unsupported target architecture: ${EFFECTIVE_ARCH}" >&2; exit 1 ;; \
     esac && \
@@ -77,6 +79,7 @@ libjansson-dev libsnappy-dev \
 liblzma-dev libz-dev pkg-config libssl-dev graphviz \
 locales" && \
     case "${EFFECTIVE_ARCH}" in \
+      x86_64) EFFECTIVE_ARCH="amd64" ; PACKAGES="${PACKAGES} bazel" ;; \
       amd64) PACKAGES="${PACKAGES} bazel" ;; \
       arm64) ;; \
       *) echo "Unsupported target architecture: ${EFFECTIVE_ARCH}" >&2; exit 1 ;; \
@@ -93,6 +96,7 @@ RUN RESOLVED_GO_VERSION="${GO_VERSION}" && \
     GO_ARCH="${TARGETARCH_OVERRIDE:-${TARGETARCH}}" && \
     if [ -z "${GO_ARCH}" ]; then GO_ARCH="$(dpkg --print-architecture)"; fi && \
     case "${GO_ARCH}" in \
+      x86_64) GO_DOWNLOAD_ARCH="amd64" ;; \
       amd64) GO_DOWNLOAD_ARCH="amd64" ;; \
       arm64) GO_DOWNLOAD_ARCH="arm64" ;; \
       *) echo "Unsupported Go architecture: ${GO_ARCH}" >&2; exit 1 ;; \
@@ -135,6 +139,7 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
 RUN EFFECTIVE_ARCH="${TARGETARCH_OVERRIDE:-${TARGETARCH}}" && \
     if [ -z "${EFFECTIVE_ARCH}" ]; then EFFECTIVE_ARCH="$(dpkg --print-architecture)"; fi && \
     case "${EFFECTIVE_ARCH}" in \
+      x86_64) ;; \
       amd64) ;; \
       arm64) curl -Lo /usr/local/bin/bazel https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-arm64 && \
         chmod +x /usr/local/bin/bazel ;; \
@@ -180,6 +185,7 @@ RUN apt-get update && \
     CODE_SERVER_ARCH="${TARGETARCH_OVERRIDE:-${TARGETARCH}}" && \
     if [ -z "${CODE_SERVER_ARCH}" ]; then CODE_SERVER_ARCH="$(dpkg --print-architecture)"; fi && \
     case "${CODE_SERVER_ARCH}" in \
+      x86_64) CODE_SERVER_ARCH="amd64" ;; \
       amd64|arm64) ;; \
       *) echo "Unsupported code-server architecture: ${CODE_SERVER_ARCH}" >&2; exit 1 ;; \
     esac && \
