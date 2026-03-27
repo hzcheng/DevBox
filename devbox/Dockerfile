@@ -1,5 +1,5 @@
-# docker build --no-cache -t hzcheng/ubuntu:22.04.x86_64 -f ./docker/Dockerfile.ubuntu-22.04.x86_64 .
-# docker run -it --rm hzcheng/ubuntu:22.04.x86_64 bash
+# docker build --no-cache -t hzcheng/devbox:latest -f ./devbox/Dockerfile ./devbox
+# docker run -it --rm hzcheng/devbox:latest bash
 
 # =============================================================================
 # Stage 1: Base image with all development tools
@@ -14,18 +14,36 @@ ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG ALL_PROXY
 ARG GO_VERSION=latest
+ARG TARGETARCH
+ARG TARGETARCH_OVERRIDE
 
 ENV GOROOT=/usr/local/go
 ENV PATH="${GOROOT}/bin:${PATH}"
+ENV TZ="Asia/Shanghai"
 
-# Change source list
-RUN mv /etc/apt/sources.list /etc/apt/sources.list.bak && \
-    echo "deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ jammy main restricted universe multiverse" > /etc/apt/sources.list && \
-    echo "deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ jammy-updates main restricted universe multiverse" >> /etc/apt/sources.list && \
-    echo "deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ jammy-backports main restricted universe multiverse" >> /etc/apt/sources.list 
+# Change timezone and source list for the effective target architecture.
+RUN EFFECTIVE_ARCH="${TARGETARCH_OVERRIDE:-${TARGETARCH}}" && \
+    if [ -z "${EFFECTIVE_ARCH}" ]; then EFFECTIVE_ARCH="$(dpkg --print-architecture)"; fi && \
+    case "${EFFECTIVE_ARCH}" in \
+      amd64) UBUNTU_MIRROR_ROOT="ubuntu" ;; \
+      arm64) UBUNTU_MIRROR_ROOT="ubuntu-ports" ;; \
+      *) echo "Unsupported target architecture: ${EFFECTIVE_ARCH}" >&2; exit 1 ;; \
+    esac && \
+    ln -snf "/usr/share/zoneinfo/${TZ}" /etc/localtime && \
+    echo "${TZ}" > /etc/timezone && \
+    mv /etc/apt/sources.list /etc/apt/sources.list.bak && \
+    printf 'deb https://mirrors.tuna.tsinghua.edu.cn/%s/ jammy main restricted universe multiverse\n' "${UBUNTU_MIRROR_ROOT}" > /etc/apt/sources.list && \
+    printf 'deb https://mirrors.tuna.tsinghua.edu.cn/%s/ jammy-updates main restricted universe multiverse\n' "${UBUNTU_MIRROR_ROOT}" >> /etc/apt/sources.list && \
+    printf 'deb https://mirrors.tuna.tsinghua.edu.cn/%s/ jammy-backports main restricted universe multiverse\n' "${UBUNTU_MIRROR_ROOT}" >> /etc/apt/sources.list
 
 # Prepare for adding repositories
-RUN export DEBIAN_FRONTEND=noninteractive && \
+RUN EFFECTIVE_ARCH="${TARGETARCH_OVERRIDE:-${TARGETARCH}}" && \
+    if [ -z "${EFFECTIVE_ARCH}" ]; then EFFECTIVE_ARCH="$(dpkg --print-architecture)"; fi && \
+    case "${EFFECTIVE_ARCH}" in \
+      amd64|arm64) ;; \
+      *) echo "Unsupported target architecture: ${EFFECTIVE_ARCH}" >&2; exit 1 ;; \
+    esac && \
+    export DEBIAN_FRONTEND=noninteractive && \
     apt-get update && \
     apt-get install -y \
     software-properties-common ca-certificates wget curl gnupg lsb-release inetutils-ping && \
@@ -43,20 +61,27 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
     echo "Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")" >> /etc/apt/sources.list.d/docker.sources && \
     echo "Components: stable" >> /etc/apt/sources.list.d/docker.sources && \
     echo "Signed-By: /etc/apt/keyrings/docker.asc" >> /etc/apt/sources.list.d/docker.sources && \
-    # Add Bazel apt repository
-    curl -fsSL https://bazel.build/bazel-release.pub.gpg | gpg --dearmor > /etc/apt/keyrings/bazel-archive-keyring.gpg && \
-    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/bazel-archive-keyring.gpg] https://storage.googleapis.com/bazel-apt stable jdk1.8" > /etc/apt/sources.list.d/bazel.list && \
+    if [ "${EFFECTIVE_ARCH}" = "amd64" ]; then \
+      curl -fsSL https://bazel.build/bazel-release.pub.gpg | gpg --dearmor > /etc/apt/keyrings/bazel-archive-keyring.gpg && \
+      echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/bazel-archive-keyring.gpg] https://storage.googleapis.com/bazel-apt stable jdk1.8" > /etc/apt/sources.list.d/bazel.list; \
+    fi && \
     # Update package lists
     apt-get update --fix-missing
 
 # Install packages and Chinese locale
-RUN apt-get -y install --no-install-recommends \
-    tree vim tmux python3-pip tldr patchelf \
-    docker-ce-cli docker-compose-plugin docker-buildx-plugin \
-    libjansson-dev libsnappy-dev \
-    liblzma-dev libz-dev pkg-config libssl-dev graphviz \
-    locales bazel \
-    && \
+RUN EFFECTIVE_ARCH="${TARGETARCH_OVERRIDE:-${TARGETARCH}}" && \
+    if [ -z "${EFFECTIVE_ARCH}" ]; then EFFECTIVE_ARCH="$(dpkg --print-architecture)"; fi && \
+    PACKAGES="tree vim tmux python3-pip tldr patchelf \
+docker-ce-cli docker-compose-plugin docker-buildx-plugin \
+libjansson-dev libsnappy-dev \
+liblzma-dev libz-dev pkg-config libssl-dev graphviz \
+locales" && \
+    case "${EFFECTIVE_ARCH}" in \
+      amd64) PACKAGES="${PACKAGES} bazel" ;; \
+      arm64) ;; \
+      *) echo "Unsupported target architecture: ${EFFECTIVE_ARCH}" >&2; exit 1 ;; \
+    esac && \
+    apt-get -y install --no-install-recommends ${PACKAGES} && \
     # Set python3 as default
     update-alternatives --install /usr/bin/python python /usr/bin/python3 100 && \
     # Generate Chinese locale
@@ -65,7 +90,8 @@ RUN apt-get -y install --no-install-recommends \
 
 # Install the latest stable Go by default while still allowing explicit pinning.
 RUN RESOLVED_GO_VERSION="${GO_VERSION}" && \
-    GO_ARCH="$(dpkg --print-architecture)" && \
+    GO_ARCH="${TARGETARCH_OVERRIDE:-${TARGETARCH}}" && \
+    if [ -z "${GO_ARCH}" ]; then GO_ARCH="$(dpkg --print-architecture)"; fi && \
     case "${GO_ARCH}" in \
       amd64) GO_DOWNLOAD_ARCH="amd64" ;; \
       arm64) GO_DOWNLOAD_ARCH="arm64" ;; \
@@ -105,6 +131,16 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
     faker gprof2dot tzlocal matplotlib \
     ipykernel taos-ws-py taospy baostock tushare
 
+# Install Bazelisk for ARM64 because Bazel's official apt repo is amd64-only.
+RUN EFFECTIVE_ARCH="${TARGETARCH_OVERRIDE:-${TARGETARCH}}" && \
+    if [ -z "${EFFECTIVE_ARCH}" ]; then EFFECTIVE_ARCH="$(dpkg --print-architecture)"; fi && \
+    case "${EFFECTIVE_ARCH}" in \
+      amd64) ;; \
+      arm64) curl -Lo /usr/local/bin/bazel https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-arm64 && \
+        chmod +x /usr/local/bin/bazel ;; \
+      *) echo "Unsupported target architecture: ${EFFECTIVE_ARCH}" >&2; exit 1 ;; \
+    esac
+
 RUN apt-get -y install --no-install-recommends \
     autoconf libtool automake autotools-dev screen
 
@@ -127,6 +163,8 @@ ARG all_proxy
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG ALL_PROXY
+ARG TARGETARCH
+ARG TARGETARCH_OVERRIDE
 ARG CODE_SERVER_VERSION=latest
 ARG CODE_SERVER_RELEASE_BASE_URL=https://github.com/coder/code-server/releases/download
 
@@ -139,16 +177,22 @@ RUN apt-get install -y --no-install-recommends openssh-server && \
 # Install the latest code-server by default while still allowing explicit pinning.
 RUN apt-get update && \
     RESOLVED_CODE_SERVER_VERSION="${CODE_SERVER_VERSION}" && \
+    CODE_SERVER_ARCH="${TARGETARCH_OVERRIDE:-${TARGETARCH}}" && \
+    if [ -z "${CODE_SERVER_ARCH}" ]; then CODE_SERVER_ARCH="$(dpkg --print-architecture)"; fi && \
+    case "${CODE_SERVER_ARCH}" in \
+      amd64|arm64) ;; \
+      *) echo "Unsupported code-server architecture: ${CODE_SERVER_ARCH}" >&2; exit 1 ;; \
+    esac && \
     if [ -z "${RESOLVED_CODE_SERVER_VERSION}" ] || [ "${RESOLVED_CODE_SERVER_VERSION}" = "latest" ]; then \
       LATEST_RELEASE_URL="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/coder/code-server/releases/latest)" && \
       RESOLVED_CODE_SERVER_VERSION="${LATEST_RELEASE_URL##*/}" && \
       RESOLVED_CODE_SERVER_VERSION="${RESOLVED_CODE_SERVER_VERSION#v}" && \
       test -n "${RESOLVED_CODE_SERVER_VERSION}"; \
     fi && \
-    CODE_SERVER_DEB="/tmp/code-server_${RESOLVED_CODE_SERVER_VERSION}_amd64.deb" && \
+    CODE_SERVER_DEB="/tmp/code-server_${RESOLVED_CODE_SERVER_VERSION}_${CODE_SERVER_ARCH}.deb" && \
     echo "Installing code-server v${RESOLVED_CODE_SERVER_VERSION}" && \
     curl -fsSL --connect-timeout 20 --max-time 300 --retry 5 --retry-delay 2 --retry-all-errors \
-      "${CODE_SERVER_RELEASE_BASE_URL}/v${RESOLVED_CODE_SERVER_VERSION}/code-server_${RESOLVED_CODE_SERVER_VERSION}_amd64.deb" \
+      "${CODE_SERVER_RELEASE_BASE_URL}/v${RESOLVED_CODE_SERVER_VERSION}/code-server_${RESOLVED_CODE_SERVER_VERSION}_${CODE_SERVER_ARCH}.deb" \
       -o "${CODE_SERVER_DEB}" && \
     dpkg -i "${CODE_SERVER_DEB}" && \
     rm -f "${CODE_SERVER_DEB}" && \
