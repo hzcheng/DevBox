@@ -648,7 +648,18 @@ main() {
     # 5. 启动 code-server（后台）
     start_code_server
     
-    # 6. 在后台异步安装插件（避免阻碍服务访问）
+    # 6. 启动 CodeWiz proxy（如配置）
+    start_codewiz_proxy
+    local codewiz_status="skipped"
+    local codewiz_port=""
+    if [ -f "${CODEWIZ_PROFILE_SNIPPET}" ]; then
+        codewiz_status="enabled"
+        if codewiz_port="$(resolve_codewiz_proxy_port)"; then
+            codewiz_status="enabled (port ${codewiz_port})"
+        fi
+    fi
+    
+    # 7. 在后台异步安装插件（避免阻碍服务访问）
     install_extensions_async &
     local install_pid=$!
     log_info "Extension installation running in background (PID: ${install_pid})"
@@ -657,9 +668,10 @@ main() {
     log_info "All services started successfully!"
     log_info "SSH: port 22"
     log_info "Code Server: port ${CODE_SERVER_PORT:-8080}"
+    log_info "CodeWiz proxy: ${codewiz_status}"
     log_info "=========================================="
     
-    # 7. 保持容器运行，等待所有后台进程
+    # 8. 保持容器运行，等待所有后台进程
     wait
 }
 
