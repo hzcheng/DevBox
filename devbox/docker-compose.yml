@@ -1,10 +1,12 @@
 services:
   devbox:
+    platform: ${ARCH:+linux/${ARCH}}
     build:
       context: .
-      dockerfile: Dockerfile.${ARCH}
+      dockerfile: Dockerfile
       network: host
       args:
+        TARGETARCH_OVERRIDE: ${ARCH:-}
         CODE_SERVER_VERSION: ${CODE_SERVER_VERSION:-latest}
         CODE_SERVER_RELEASE_BASE_URL: ${CODE_SERVER_RELEASE_BASE_URL:-https://github.com/coder/code-server/releases/download}
         http_proxy: ${PROXY}
@@ -13,7 +15,7 @@ services:
         HTTP_PROXY: ${PROXY}
         HTTPS_PROXY: ${PROXY}
         ALL_PROXY: ${PROXY}
-    image: home.teraai.cn/hzcheng/devbox:${ARCH}
+    image: home.teraai.cn/hzcheng/devbox:local
     container_name: ${PROJECT_NAME}-devbox
     restart: unless-stopped
     ulimits:

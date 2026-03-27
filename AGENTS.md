@@ -3,7 +3,7 @@
 ## Project Structure & Module Organization
 The repository is a Docker-based development environment, not an application codebase. Use these paths as the source of truth:
 - `docker-compose.yml`: root entrypoint; includes `devbox/docker-compose.yml`.
-- `devbox/`: container definitions and runtime scripts (`Dockerfile.x86_64`, `Dockerfile.arm64`, `start-services.sh`, `.devcontainer.json`, `tmux.conf`).
+- `devbox/`: container definitions and runtime scripts (`Dockerfile`, `start-services.sh`, `.devcontainer.json`, `tmux.conf`).
 - `devbox/config/code-server/User/`: shared code-server settings, keybindings, and project manager config.
 - `.example.env` and `devbox/.example.env`: template configuration for local `.env` files.
 
@@ -21,7 +21,7 @@ docker compose down
 ```
 
 - `docker compose config` validates merged Compose files before runtime changes.
-- `build` rebuilds the image for the `ARCH` set in `.env`.
+- `build` rebuilds the image using host-default architecture unless `ARCH=amd64` or `ARCH=arm64` is provided as an override.
 - `up -d` starts SSH and code-server via `start-services.sh`.
 
 ## Coding Style & Naming Conventions
