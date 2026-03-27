@@ -20,7 +20,7 @@ log_error() {
 # ============================================
 # CodeWiz Proxy 常量与路径
 # ============================================
-CODEWIZ_PROXY_SCRIPT="${CODEWIZ_PROXY_SCRIPT:-/Projects/Repos/codewiz-proxy/proxy.py}"
+CODEWIZ_PROXY_SCRIPT="${CODEWIZ_PROXY_SCRIPT:-/Projects/DevBox/devbox/codewiz-proxy/proxy.py}"
 CODEWIZ_PROXY_PID_FILE="/var/run/codewiz-proxy.pid"
 CODEWIZ_PROXY_LOG_FILE="/var/log/codewiz-proxy.log"
 CODEWIZ_PROFILE_SNIPPET="/etc/profile.d/devbox-codewiz.sh"
