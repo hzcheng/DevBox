@@ -17,68 +17,6 @@ log_error() {
     echo "[ERROR] $(date '+%Y-%m-%d %H:%M:%S') - $*" >&2
 }
 
-# ============================================
-# CodeWiz Proxy 常量与路径
-# ============================================
-CODEWIZ_PROXY_SCRIPT="${CODEWIZ_PROXY_SCRIPT:-/usr/local/lib/devbox/codewiz-proxy/proxy.py}"
-CODEWIZ_PROXY_PID_FILE="/var/run/codewiz-proxy.pid"
-CODEWIZ_PROXY_LOG_FILE="/var/log/codewiz-proxy.log"
-CODEWIZ_PROFILE_SNIPPET="/etc/profile.d/devbox-codewiz.sh"
-CODEWIZ_DEFAULT_API_KEY="QST2332f67caa6bdce8ae9fbd3524bdf2fa"
-
-# ============================================
-# CodeWiz Proxy 环境片段管理
-# ============================================
-write_codewiz_profile_snippet() {
-    local resolved_port="$1"
-    local resolved_key="$2"
-    local escaped_key
-    
-    escaped_key="${resolved_key//\'/\'\"\'\"\'}"
-    
-    log_info "Writing CodeWiz Claude environment snippet to ${CODEWIZ_PROFILE_SNIPPET}..."
-    mkdir -p "$(dirname "${CODEWIZ_PROFILE_SNIPPET}")"
-    cat > "${CODEWIZ_PROFILE_SNIPPET}" <<EOF
-export ANTHROPIC_BASE_URL="http://127.0.0.1:${resolved_port}"
-export ANTHROPIC_API_KEY='${escaped_key}'
-EOF
-}
-
-resolve_codewiz_api_key() {
-    printf '%s\n' "${CODEWIZ_API_KEY:-${CODEWIZ_DEFAULT_API_KEY}}"
-}
-
-normalize_codewiz_proxy_env() {
-    if [ -z "${CODEWIZ_TARGET_URL:-}" ]; then
-        unset CODEWIZ_TARGET_URL
-    fi
-}
-
-resolve_codewiz_proxy_port() {
-    local candidate="${CODEWIZ_PROXY_PORT:-8088}"
-    
-    if [[ "${candidate}" =~ ^[0-9]+$ ]] && [ "${candidate}" -ge 1 ] && [ "${candidate}" -le 65535 ]; then
-        printf '%s\n' "${candidate}"
-        return 0
-    fi
-    
-    return 1
-}
-
-export_codewiz_api_key() {
-    local resolved_key
-    resolved_key="$(resolve_codewiz_api_key)"
-    export CODEWIZ_API_KEY="${resolved_key}"
-    export ANTHROPIC_API_KEY="${resolved_key}"
-}
-
-clear_codewiz_profile_snippet() {
-    if [ -f "${CODEWIZ_PROFILE_SNIPPET}" ]; then
-        log_info "Removing CodeWiz Claude environment snippet from ${CODEWIZ_PROFILE_SNIPPET}..."
-        rm -f "${CODEWIZ_PROFILE_SNIPPET}"
-    fi
-}
-
 is_port_in_use() {
     local port="$1"
     
@@ -98,62 +36,6 @@ is_port_in_use() {
     fi
     
     return 1
-}
-
-start_codewiz_proxy() {
-    local port
-    
-    if [ -z "${CODEWIZ_SESSION_TOKEN}" ]; then
-        log_warn "CODEWIZ_SESSION_TOKEN is not set; skipping CodeWiz proxy startup."
-        clear_codewiz_profile_snippet
-        return 0
-    fi
-    
-    if [ -z "${CODEWIZ_USER_EMAIL}" ]; then
-        log_warn "CODEWIZ_USER_EMAIL is not set; skipping CodeWiz proxy startup."
-        clear_codewiz_profile_snippet
-        return 0
-    fi
-    
-    if ! port="$(resolve_codewiz_proxy_port)"; then
-        log_warn "CODEWIZ_PROXY_PORT must be a numeric TCP port; skipping CodeWiz proxy startup."
-        clear_codewiz_profile_snippet
-        return 0
-    fi
-    
-    if [ ! -f "${CODEWIZ_PROXY_SCRIPT}" ]; then
-        log_warn "CodeWiz proxy script not found at ${CODEWIZ_PROXY_SCRIPT}; skipping startup."
-        clear_codewiz_profile_snippet
-        return 0
-    fi
-    
-    if is_port_in_use "${port}"; then
-        log_warn "Port ${port} is already in use; skipping CodeWiz proxy startup."
-        clear_codewiz_profile_snippet
-        return 0
-    fi
-    
-    local resolved_key
-    resolved_key="$(resolve_codewiz_api_key)"
-    normalize_codewiz_proxy_env
-    export_codewiz_api_key
-    mkdir -p "$(dirname "${CODEWIZ_PROXY_PID_FILE}")"
-    mkdir -p "$(dirname "${CODEWIZ_PROXY_LOG_FILE}")"
-    
-    log_info "Starting CodeWiz proxy on port ${port}..."
-    python3 "${CODEWIZ_PROXY_SCRIPT}" --log-file "${CODEWIZ_PROXY_LOG_FILE}" &
-    local proxy_pid=$!
-    
-    sleep 1
-    if ! kill -0 "${proxy_pid}" >/dev/null 2>&1; then
-        log_warn "CodeWiz proxy failed to start; skipping."
-        clear_codewiz_profile_snippet
-        return 0
-    fi
-    
-    printf '%s\n' "${proxy_pid}" > "${CODEWIZ_PROXY_PID_FILE}"
-    write_codewiz_profile_snippet "${port}" "${resolved_key}"
-    log_info "CodeWiz proxy started (PID: ${proxy_pid})."
 }
 
 # ============================================
@@ -622,15 +504,6 @@ install_extensions_async() {
         fi
     done
     
-    # 安装 Marketplace 插件（CodeWiz）
-    local codewiz_version="${CODEWIZ_VERSION:-latest}"
-    log_info "Installing CodeWiz extension..."
-    if install_marketplace_vsix_for_code_version "felvin" "codewiz" "${codewiz_version}" "felvin.codewiz"; then
-        log_info "Successfully installed: felvin.codewiz"
-    else
-        log_warn "Failed to install: felvin.codewiz"
-    fi
-    
     log_info "Extension installation completed!"
 }
 
@@ -657,18 +530,7 @@ main() {
     # 5. 启动 code-server（后台）
     start_code_server
     
-    # 6. 启动 CodeWiz proxy（如配置）
-    start_codewiz_proxy
-    local codewiz_status="skipped"
-    local codewiz_port=""
-    if [ -f "${CODEWIZ_PROFILE_SNIPPET}" ]; then
-        codewiz_status="enabled"
-        if codewiz_port="$(resolve_codewiz_proxy_port)"; then
-            codewiz_status="enabled (port ${codewiz_port})"
-        fi
-    fi
-    
-    # 7. 在后台异步安装插件（避免阻碍服务访问）
+    # 6. 在后台异步安装插件（避免阻碍服务访问）
     install_extensions_async &
     local install_pid=$!
     log_info "Extension installation running in background (PID: ${install_pid})"
@@ -677,10 +539,9 @@ main() {
     log_info "All services started successfully!"
     log_info "SSH: port 22"
     log_info "Code Server: port ${CODE_SERVER_PORT:-8080}"
-    log_info "CodeWiz proxy: ${codewiz_status}"
     log_info "=========================================="
     
-    # 8. 保持容器运行，等待所有后台进程
+    # 7. 保持容器运行，等待所有后台进程
     wait
 }
 

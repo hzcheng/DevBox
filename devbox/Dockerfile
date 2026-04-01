@@ -206,16 +206,14 @@ RUN apt-get update && \
     which code-server && code-server --version
 
 # Create code-server config directory
-RUN mkdir -p /root/.config/code-server /usr/local/lib/devbox/codewiz-proxy
+RUN mkdir -p /root/.config/code-server
 
 COPY ./tmux.conf /root/.tmux.conf
 RUN sed -i 's/\r$//' /root/.tmux.conf
 
-# Package startup script and vendored proxy
-COPY ./codewiz-proxy/proxy.py /usr/local/lib/devbox/codewiz-proxy/proxy.py
+# Package startup script
 COPY ./start-services.sh /usr/local/bin/start-services.sh
-RUN sed -i 's/\r$//' /usr/local/bin/start-services.sh && chmod +x /usr/local/bin/start-services.sh && \
-    sed -i 's/\r$//' /usr/local/lib/devbox/codewiz-proxy/proxy.py && chmod +x /usr/local/lib/devbox/codewiz-proxy/proxy.py
+RUN sed -i 's/\r$//' /usr/local/bin/start-services.sh && chmod +x /usr/local/bin/start-services.sh
 
 # Expose code-server port
 EXPOSE 8080 22
