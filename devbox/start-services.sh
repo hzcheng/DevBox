@@ -193,6 +193,8 @@ setup_git() {
         git config --global user.email "$GIT_USER_EMAIL"
         log_info "Git user.email set to: $GIT_USER_EMAIL"
     fi
+
+    git config --global init.defaultBranch main
     
     git config --global credential.helper store
 }
