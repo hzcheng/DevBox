@@ -19,7 +19,7 @@
     "workbench.startupEditor": "none",
     "workbench.secondarySideBar.showLabels": false,
 
-    "workbench.colorTheme": "Solarized Light",
+    "workbench.colorTheme": "Quiet Light",
     "terminal.integrated.initialHint": false,
     "claudeCode.preferredLocation": "panel",
     "workbench.panel.showLabels": false,

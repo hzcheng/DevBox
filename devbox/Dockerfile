@@ -204,6 +204,24 @@ RUN apt-get -y install --no-install-recommends \
 # Install AI CLIs
 RUN npm install -g opencode-ai @anthropic-ai/claude-code @openai/codex
 
+# Install cc-switch-cli
+RUN CC_SWITCH_ARCH="${TARGETARCH_OVERRIDE:-${TARGETARCH}}" && \
+    if [ -z "${CC_SWITCH_ARCH}" ]; then CC_SWITCH_ARCH="$(dpkg --print-architecture)"; fi && \
+    case "${CC_SWITCH_ARCH}" in \
+      x86_64|amd64) CC_SWITCH_ARCHIVE="cc-switch-cli-linux-x64-musl.tar.gz" ;; \
+      arm64) CC_SWITCH_ARCHIVE="cc-switch-cli-linux-arm64-musl.tar.gz" ;; \
+      *) echo "Unsupported cc-switch architecture: ${CC_SWITCH_ARCH}" >&2; exit 1 ;; \
+    esac && \
+    CC_SWITCH_URL="https://github.com/saladday/cc-switch-cli/releases/latest/download/${CC_SWITCH_ARCHIVE}" && \
+    CC_SWITCH_TARBALL="/tmp/${CC_SWITCH_ARCHIVE}" && \
+    curl -fsSL --connect-timeout 20 --max-time 300 --retry 5 --retry-delay 2 --retry-all-errors \
+      "${CC_SWITCH_URL}" \
+      -o "${CC_SWITCH_TARBALL}" && \
+    tar -xzf "${CC_SWITCH_TARBALL}" -C /tmp && \
+    install -m 0755 /tmp/cc-switch /usr/local/bin/cc-switch && \
+    rm -f "${CC_SWITCH_TARBALL}" /tmp/cc-switch && \
+    cc-switch --version
+
 # Configure Go modules proxy based on USE_CN_MIRROR
 RUN if [ "${USE_CN_MIRROR}" = "true" ]; then \
         go env -w GOPROXY=https://goproxy.cn,direct; \

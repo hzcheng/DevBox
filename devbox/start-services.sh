@@ -2,6 +2,8 @@
 
 set -e
 
+CODE_SERVER_PID=""
+
 # ============================================
 # 日志工具函数
 # ============================================
@@ -166,7 +168,7 @@ ensure_code_server_installed() {
 # ============================================
 setup_code_server_config() {
     log_info "Setting up code-server configuration..."
-    
+
     mkdir -p /root/.config/code-server
     cat > /root/.config/code-server/config.yaml <<EOF
 bind-addr: 0.0.0.0:${CODE_SERVER_PORT:-8080}
@@ -178,11 +180,98 @@ EOF
 
 start_code_server() {
     log_info "Starting code-server on port ${CODE_SERVER_PORT:-8080}..."
-    
-    # Start code-server in background
+
     /usr/bin/code-server --config /root/.config/code-server/config.yaml /root/Projects &
-    
-    log_info "code-server started"
+    CODE_SERVER_PID=$!
+    log_info "code-server started (PID: ${CODE_SERVER_PID})"
+}
+
+stop_code_server() {
+    if [ -z "${CODE_SERVER_PID}" ] || ! kill -0 "${CODE_SERVER_PID}" 2>/dev/null; then
+        return 0
+    fi
+
+    log_info "Stopping code-server (PID: ${CODE_SERVER_PID})..."
+    kill "${CODE_SERVER_PID}" 2>/dev/null || true
+    wait "${CODE_SERVER_PID}" 2>/dev/null || true
+    CODE_SERVER_PID=""
+}
+
+restart_code_server() {
+    stop_code_server
+    start_code_server
+}
+
+is_code_server_auto_update_enabled() {
+    local enabled="${CODE_SERVER_AUTO_UPDATE:-true}"
+
+    case "${enabled}" in
+        1|true|TRUE|yes|YES|on|ON)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+check_and_update_code_server() {
+    local requested_version="${CODE_SERVER_VERSION:-latest}"
+    local installed_version=""
+    local resolved_version="${requested_version}"
+
+    if command -v code-server >/dev/null 2>&1; then
+        installed_version="$(get_code_server_version || true)"
+    fi
+
+    if [ -z "${resolved_version}" ] || [ "${resolved_version}" = "latest" ]; then
+        resolved_version="$(resolve_latest_code_server_version)" || {
+            log_warn "Skipping code-server update check because the latest version could not be resolved."
+            return 0
+        }
+    fi
+
+    if [ "${installed_version}" = "${resolved_version}" ]; then
+        log_info "code-server ${installed_version} is already up to date"
+        return 0
+    fi
+
+    log_info "Updating code-server from ${installed_version:-not installed} to ${resolved_version}"
+    ensure_code_server_installed || return 1
+    restart_code_server
+}
+
+code_server_update_loop() {
+    local initial_delay="${CODE_SERVER_UPDATE_INITIAL_DELAY_SECONDS:-300}"
+    local interval="${CODE_SERVER_UPDATE_INTERVAL_SECONDS:-86400}"
+
+    if ! [[ "${initial_delay}" =~ ^[0-9]+$ ]]; then
+        log_warn "Invalid CODE_SERVER_UPDATE_INITIAL_DELAY_SECONDS=${initial_delay}; defaulting to 300"
+        initial_delay=300
+    fi
+
+    if ! [[ "${interval}" =~ ^[0-9]+$ ]] || [ "${interval}" -le 0 ]; then
+        log_warn "Invalid CODE_SERVER_UPDATE_INTERVAL_SECONDS=${interval}; defaulting to 86400"
+        interval=86400
+    fi
+
+    if [ "${CODE_SERVER_VERSION:-latest}" != "latest" ]; then
+        log_info "Skipping auto-update loop because CODE_SERVER_VERSION is pinned to ${CODE_SERVER_VERSION}"
+        return 0
+    fi
+
+    log_info "Starting code-server auto-update loop (initial delay: ${initial_delay}s, interval: ${interval}s)"
+    sleep "${initial_delay}"
+
+    while true; do
+        if check_and_update_code_server; then
+            log_info "code-server auto-update check completed"
+        else
+            log_warn "code-server auto-update check failed; retrying on next interval"
+        fi
+
+        sleep "${interval}"
+    done
 }
 
 # ============================================
@@ -514,34 +603,43 @@ main() {
     log_info "=========================================="
     log_info "Starting DevBox services..."
     log_info "=========================================="
-    
+
     # 1. 启动 SSH 服务
     setup_ssh
-    
+
     # 2. 配置 Git
     setup_git
-    
+
     # 3. 确保 code-server 已安装
     ensure_code_server_installed
-    
+
     # 4. 配置 code-server
     setup_code_server_config
-    
+
     # 5. 启动 code-server（后台）
     start_code_server
-    
-    # 6. 在后台异步安装插件（避免阻碍服务访问）
+
+    # 6. 启动自动更新循环（后台）
+    if is_code_server_auto_update_enabled; then
+        code_server_update_loop &
+        local auto_update_pid=$!
+        log_info "code-server auto-update loop running in background (PID: ${auto_update_pid})"
+    else
+        log_info "code-server auto-update loop disabled"
+    fi
+
+    # 7. 在后台异步安装插件（避免阻碍服务访问）
     install_extensions_async &
     local install_pid=$!
     log_info "Extension installation running in background (PID: ${install_pid})"
-    
+
     log_info "=========================================="
     log_info "All services started successfully!"
     log_info "SSH: port 22"
     log_info "Code Server: port ${CODE_SERVER_PORT:-8080}"
     log_info "=========================================="
-    
-    # 7. 保持容器运行，等待所有后台进程
+
+    # 8. 保持容器运行，等待所有后台进程
     wait
 }
 
