@@ -1,4 +1,6 @@
 .env
+openclash/.env
 .agents/
 skills-lock.json
 .worktrees/
+

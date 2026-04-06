@@ -1,0 +1,25 @@
+services:
+  openclash:
+    profiles:
+      - openclash
+    build:
+      context: .
+      args:
+        OPENCLASH_BUILD_MIHOMO_IMAGE: ${OPENCLASH_BUILD_MIHOMO_IMAGE:-docker.io/metacubex/mihomo:latest}
+        OPENCLASH_BUILD_ALPINE_REPO: ${OPENCLASH_BUILD_ALPINE_REPO:-https://dl-cdn.alpinelinux.org/alpine}
+        OPENCLASH_BUILD_METACUBEXD_URL: ${OPENCLASH_BUILD_METACUBEXD_URL:-https://codeload.github.com/MetaCubeX/metacubexd/tar.gz/gh-pages}
+    image: openclash:custom
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    entrypoint:
+      - /usr/local/bin/bootstrap-openclash.sh
+    ports:
+      - "${OPENCLASH_MIXED_PORT:-9981}:${OPENCLASH_MIXED_PORT:-9981}"
+      - "${OPENCLASH_CONTROLLER_PORT:-9097}:${OPENCLASH_CONTROLLER_PORT:-9097}"
+    volumes:
+      - openclash-state:${OPENCLASH_STATE_DIR:-/root/.config/mihomo}
+
+volumes:
+  openclash-state:

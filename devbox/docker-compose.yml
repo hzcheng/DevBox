@@ -10,12 +10,12 @@ services:
         TARGETARCH_OVERRIDE: ${ARCH:-}
         CODE_SERVER_VERSION: ${CODE_SERVER_VERSION:-latest}
         CODE_SERVER_RELEASE_BASE_URL: ${CODE_SERVER_RELEASE_BASE_URL:-https://github.com/coder/code-server/releases/download}
-        http_proxy: ${BUILD_PROXY}
-        https_proxy: ${BUILD_PROXY}
-        all_proxy: ${BUILD_PROXY}
-        HTTP_PROXY: ${BUILD_PROXY}
-        HTTPS_PROXY: ${BUILD_PROXY}
-        ALL_PROXY: ${BUILD_PROXY}
+        http_proxy: ${DEVBOX_BUILD_PROXY:-${BUILD_PROXY}}
+        https_proxy: ${DEVBOX_BUILD_PROXY:-${BUILD_PROXY}}
+        all_proxy: ${DEVBOX_BUILD_PROXY:-${BUILD_PROXY}}
+        HTTP_PROXY: ${DEVBOX_BUILD_PROXY:-${BUILD_PROXY}}
+        HTTPS_PROXY: ${DEVBOX_BUILD_PROXY:-${BUILD_PROXY}}
+        ALL_PROXY: ${DEVBOX_BUILD_PROXY:-${BUILD_PROXY}}
     image: home.teraai.cn/hzcheng/devbox:${ARCH:-local}
     container_name: ${PROJECT_NAME}-devbox
     restart: unless-stopped
@@ -41,12 +41,12 @@ services:
       - LANGUAGE=zh_CN:zh
       - LC_ALL=zh_CN.UTF-8
       - DOCKER_BUILDKIT=1
-      - all_proxy=${RUNTIME_PROXY}
+      - all_proxy=${DEVBOX_RUNTIME_PROXY:-${RUNTIME_PROXY}}
       - ASAN_OPTIONS=abort_on_error=1:disable_coredump=0:unmap_shadow_on_exit=1
-      - http_proxy=${RUNTIME_PROXY}
-      - HTTP_PROXY=${RUNTIME_PROXY}
-      - https_proxy=${RUNTIME_PROXY}
-      - HTTPS_PROXY=${RUNTIME_PROXY}
+      - http_proxy=${DEVBOX_RUNTIME_PROXY:-${RUNTIME_PROXY}}
+      - HTTP_PROXY=${DEVBOX_RUNTIME_PROXY:-${RUNTIME_PROXY}}
+      - https_proxy=${DEVBOX_RUNTIME_PROXY:-${RUNTIME_PROXY}}
+      - HTTPS_PROXY=${DEVBOX_RUNTIME_PROXY:-${RUNTIME_PROXY}}
       - no_proxy=${NO_PROXY}
       - NO_PROXY=${NO_PROXY}
       - CODE_SERVER_VERSION=${CODE_SERVER_VERSION:-latest}

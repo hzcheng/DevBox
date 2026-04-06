@@ -3,3 +3,5 @@ name: ${PROJECT_NAME}
 include:
   - path: ./devbox/docker-compose.yml
     project_directory: ./devbox
+  - path: ./openclash/docker-compose.yml
+    project_directory: ./openclash

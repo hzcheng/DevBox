@@ -2,27 +2,31 @@
 
 ## Project Structure & Module Organization
 The repository is a Docker-based development environment, not an application codebase. Use these paths as the source of truth:
-- `docker-compose.yml`: root entrypoint; includes `devbox/docker-compose.yml`.
+- `docker-compose.yml`: root entrypoint; includes `devbox/docker-compose.yml` and `openclash/docker-compose.yml`.
 - `devbox/`: container definitions and runtime scripts (`Dockerfile`, `start-services.sh`, `.devcontainer.json`, `tmux.conf`).
+- `openclash/`: vendored OpenClash deployment (`docker-compose.yml`, `Dockerfile`, `.example.env`, `scripts/`).
 - `devbox/config/code-server/User/`: shared code-server settings, keybindings, and project manager config.
-- `.example.env` and `devbox/.example.env`: template configuration for local `.env` files.
+- `.example.env`, `devbox/.example.env`, and `openclash/.example.env`: template configuration for local `.env` files.
 
 ## Build, Test, and Development Commands
 Run commands from repository root:
 
 ```bash
-cp .example.env .env && cp devbox/.example.env devbox/.env
-docker compose config
-docker compose build devbox
-docker compose up -d
-docker compose logs -f devbox
-docker compose exec devbox bash
-docker compose down
+cp .example.env .env && cp devbox/.example.env devbox/.env && cp openclash/.example.env openclash/.env
+./scripts/devbox-compose.sh config
+./scripts/devbox-compose.sh build
+./scripts/devbox-compose.sh up -d
+./scripts/devbox-compose.sh logs -f devbox
+./scripts/devbox-compose.sh exec devbox bash
+./scripts/devbox-compose.sh down
 ```
 
-- `docker compose config` validates merged Compose files before runtime changes.
+- `PROXY_PROVIDER=none` keeps OpenClash disabled.
+- `PROXY_PROVIDER=external` uses the explicit `BUILD_PROXY` / `RUNTIME_PROXY` values from root `.env`.
+- `PROXY_PROVIDER=openclash` enables the vendored `openclash/` subtree and auto-routes DevBox build/runtime traffic through it.
+- `./scripts/devbox-compose.sh config` validates the merged Compose configuration before runtime changes.
 - `build` rebuilds the image using host-default architecture unless `ARCH=amd64` or `ARCH=arm64` is provided as an override.
-- `up -d` starts SSH and code-server via `start-services.sh`.
+- `up -d` starts SSH and code-server via `start-services.sh` and starts OpenClash when enabled.
 
 ## Coding Style & Naming Conventions
 - YAML files use 2-space indentation; keep keys grouped by function (build, volumes, env, ports).
