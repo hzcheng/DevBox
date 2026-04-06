@@ -6,15 +6,16 @@ services:
       dockerfile: Dockerfile
       network: host
       args:
+        USE_CN_MIRROR: ${USE_CN_MIRROR:-false}
         TARGETARCH_OVERRIDE: ${ARCH:-}
         CODE_SERVER_VERSION: ${CODE_SERVER_VERSION:-latest}
         CODE_SERVER_RELEASE_BASE_URL: ${CODE_SERVER_RELEASE_BASE_URL:-https://github.com/coder/code-server/releases/download}
-        http_proxy: ${PROXY}
-        https_proxy: ${PROXY}
-        all_proxy: ${PROXY}
-        HTTP_PROXY: ${PROXY}
-        HTTPS_PROXY: ${PROXY}
-        ALL_PROXY: ${PROXY}
+        http_proxy: ${BUILD_PROXY}
+        https_proxy: ${BUILD_PROXY}
+        all_proxy: ${BUILD_PROXY}
+        HTTP_PROXY: ${BUILD_PROXY}
+        HTTPS_PROXY: ${BUILD_PROXY}
+        ALL_PROXY: ${BUILD_PROXY}
     image: home.teraai.cn/hzcheng/devbox:${ARCH:-local}
     container_name: ${PROJECT_NAME}-devbox
     restart: unless-stopped
@@ -40,10 +41,14 @@ services:
       - LANGUAGE=zh_CN:zh
       - LC_ALL=zh_CN.UTF-8
       - DOCKER_BUILDKIT=1
-      - all_proxy=${PROXY}
+      - all_proxy=${RUNTIME_PROXY}
       - ASAN_OPTIONS=abort_on_error=1:disable_coredump=0:unmap_shadow_on_exit=1
-      - http_proxy=${PROXY}
-      - https_proxy=${PROXY}
+      - http_proxy=${RUNTIME_PROXY}
+      - HTTP_PROXY=${RUNTIME_PROXY}
+      - https_proxy=${RUNTIME_PROXY}
+      - HTTPS_PROXY=${RUNTIME_PROXY}
+      - no_proxy=${NO_PROXY}
+      - NO_PROXY=${NO_PROXY}
       - CODE_SERVER_VERSION=${CODE_SERVER_VERSION:-latest}
       - CODE_SERVER_RELEASE_BASE_URL=${CODE_SERVER_RELEASE_BASE_URL:-https://github.com/coder/code-server/releases/download}
       - CODE_SERVER_AUTH=${CODE_SERVER_AUTH:-password}

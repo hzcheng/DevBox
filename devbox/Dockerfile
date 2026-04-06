@@ -1,11 +1,20 @@
 # docker build --no-cache -t hzcheng/devbox:latest -f ./devbox/Dockerfile ./devbox
 # docker run -it --rm hzcheng/devbox:latest bash
+#
+# For mainland China network, build with:
+#   docker build --build-arg USE_CN_MIRROR=true -t hzcheng/devbox:latest -f ./devbox/Dockerfile ./devbox
 
 # =============================================================================
 # Stage 1: Base image with all development tools
 # This stage contains all the heavy dependencies that rarely change
 # =============================================================================
+# Use Docker Hub mirror for MCR (for mainland China network)
+# You can also use: docker.m.daocloud.io/mcr.microsoft.com/vscode/devcontainers/cpp:ubuntu-22.04
 FROM mcr.microsoft.com/vscode/devcontainers/cpp:ubuntu-22.04 AS base
+
+# Set to "true" to use mainland China mirrors for faster builds
+# Currently supported: Ubuntu apt, Docker apt, NPM registry, Go download, GitHub releases
+ARG USE_CN_MIRROR=false
 
 ARG http_proxy
 ARG https_proxy
@@ -33,9 +42,15 @@ RUN EFFECTIVE_ARCH="${TARGETARCH_OVERRIDE:-${TARGETARCH}}" && \
     ln -snf "/usr/share/zoneinfo/${TZ}" /etc/localtime && \
     echo "${TZ}" > /etc/timezone && \
     mv /etc/apt/sources.list /etc/apt/sources.list.bak && \
-    printf 'deb https://mirrors.tuna.tsinghua.edu.cn/%s/ jammy main restricted universe multiverse\n' "${UBUNTU_MIRROR_ROOT}" > /etc/apt/sources.list && \
-    printf 'deb https://mirrors.tuna.tsinghua.edu.cn/%s/ jammy-updates main restricted universe multiverse\n' "${UBUNTU_MIRROR_ROOT}" >> /etc/apt/sources.list && \
-    printf 'deb https://mirrors.tuna.tsinghua.edu.cn/%s/ jammy-backports main restricted universe multiverse\n' "${UBUNTU_MIRROR_ROOT}" >> /etc/apt/sources.list
+    if [ "${USE_CN_MIRROR}" = "true" ]; then \
+        printf 'deb https://mirrors.tuna.tsinghua.edu.cn/%s/ jammy main restricted universe multiverse\n' "${UBUNTU_MIRROR_ROOT}" > /etc/apt/sources.list && \
+        printf 'deb https://mirrors.tuna.tsinghua.edu.cn/%s/ jammy-updates main restricted universe multiverse\n' "${UBUNTU_MIRROR_ROOT}" >> /etc/apt/sources.list && \
+        printf 'deb https://mirrors.tuna.tsinghua.edu.cn/%s/ jammy-backports main restricted universe multiverse\n' "${UBUNTU_MIRROR_ROOT}" >> /etc/apt/sources.list; \
+    else \
+        printf 'deb http://archive.ubuntu.com/ubuntu/ jammy main restricted universe multiverse\n' > /etc/apt/sources.list && \
+        printf 'deb http://archive.ubuntu.com/ubuntu/ jammy-updates main restricted universe multiverse\n' >> /etc/apt/sources.list && \
+        printf 'deb http://archive.ubuntu.com/ubuntu/ jammy-backports main restricted universe multiverse\n' >> /etc/apt/sources.list; \
+    fi
 
 # Prepare for adding repositories
 RUN EFFECTIVE_ARCH="${TARGETARCH_OVERRIDE:-${TARGETARCH}}" && \
@@ -49,21 +64,28 @@ RUN EFFECTIVE_ARCH="${TARGETARCH_OVERRIDE:-${TARGETARCH}}" && \
     apt-get update && \
     apt-get install -y \
     software-properties-common ca-certificates wget curl gnupg lsb-release inetutils-ping && \
-    # Add LLVM apt repository
+    # Add LLVM apt repository (use official source with retry)
     wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add - && \
     add-apt-repository "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-20 main" && \
-    # Add Node.js apt repository
+    # Add Node.js apt repository (use official source with fallback)
     curl -fsSL https://deb.nodesource.com/setup_current.x | bash - && \
     # Add Docker apt repository
     install -m 0755 -d /etc/apt/keyrings && \
-    curl -fsSL https://mirrors.tuna.tsinghua.edu.cn/docker-ce/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc && \
+    if [ "${USE_CN_MIRROR}" = "true" ]; then \
+        curl -fsSL https://mirrors.tuna.tsinghua.edu.cn/docker-ce/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc && \
+        echo "Types: deb" > /etc/apt/sources.list.d/docker.sources && \
+        echo "URIs: https://mirrors.tuna.tsinghua.edu.cn/docker-ce/linux/ubuntu" >> /etc/apt/sources.list.d/docker.sources; \
+    else \
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc && \
+        echo "Types: deb" > /etc/apt/sources.list.d/docker.sources && \
+        echo "URIs: https://download.docker.com/linux/ubuntu" >> /etc/apt/sources.list.d/docker.sources; \
+    fi && \
     chmod a+r /etc/apt/keyrings/docker.asc && \
-    echo "Types: deb" > /etc/apt/sources.list.d/docker.sources && \
-    echo "URIs: https://download.docker.com/linux/ubuntu" >> /etc/apt/sources.list.d/docker.sources && \
     echo "Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")" >> /etc/apt/sources.list.d/docker.sources && \
     echo "Components: stable" >> /etc/apt/sources.list.d/docker.sources && \
     echo "Signed-By: /etc/apt/keyrings/docker.asc" >> /etc/apt/sources.list.d/docker.sources && \
-    if [ "${EFFECTIVE_ARCH}" = "amd64" ]; then \
+    # Skip Bazel apt repo in CN mirror mode (will use bazelisk instead)
+    if [ "${EFFECTIVE_ARCH}" = "amd64" ] && [ "${USE_CN_MIRROR}" != "true" ]; then \
       curl -fsSL https://bazel.build/bazel-release.pub.gpg | gpg --dearmor > /etc/apt/keyrings/bazel-archive-keyring.gpg && \
       echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/bazel-archive-keyring.gpg] https://storage.googleapis.com/bazel-apt stable jdk1.8" > /etc/apt/sources.list.d/bazel.list; \
     fi && \
@@ -79,8 +101,8 @@ libjansson-dev libsnappy-dev \
 liblzma-dev libz-dev pkg-config libssl-dev graphviz \
 locales" && \
     case "${EFFECTIVE_ARCH}" in \
-      x86_64) EFFECTIVE_ARCH="amd64" ; PACKAGES="${PACKAGES} bazel" ;; \
-      amd64) PACKAGES="${PACKAGES} bazel" ;; \
+      x86_64) EFFECTIVE_ARCH="amd64" ; if [ "${USE_CN_MIRROR}" != "true" ]; then PACKAGES="${PACKAGES} bazel"; fi ;; \
+      amd64) if [ "${USE_CN_MIRROR}" != "true" ]; then PACKAGES="${PACKAGES} bazel"; fi ;; \
       arm64) ;; \
       *) echo "Unsupported target architecture: ${EFFECTIVE_ARCH}" >&2; exit 1 ;; \
     esac && \
@@ -109,9 +131,18 @@ RUN RESOLVED_GO_VERSION="${GO_VERSION}" && \
     GO_SHA256="$(python3 -c 'import json, sys, urllib.request; version = f"go{sys.argv[1]}"; filename = f"{version}.linux-{sys.argv[2]}.tar.gz"; releases = json.load(urllib.request.urlopen("https://go.dev/dl/?mode=json&include=all")); print(next(artifact["sha256"] for release in releases if release.get("version") == version for artifact in release.get("files", []) if artifact.get("filename") == filename))' "${RESOLVED_GO_VERSION}" "${GO_DOWNLOAD_ARCH}")" && \
     GO_ARCHIVE="/tmp/${GO_TARBALL}" && \
     echo "Installing Go ${RESOLVED_GO_VERSION} for ${GO_DOWNLOAD_ARCH}" && \
-    curl -fsSL --connect-timeout 20 --max-time 300 --retry 5 --retry-delay 2 --retry-all-errors \
-      "https://go.dev/dl/${GO_TARBALL}" \
-      -o "${GO_ARCHIVE}" && \
+    if [ "${USE_CN_MIRROR}" = "true" ]; then \
+        curl -fsSL --connect-timeout 20 --max-time 300 --retry 3 --retry-delay 2 \
+          "https://mirrors.aliyun.com/golang/${GO_TARBALL}" \
+          -o "${GO_ARCHIVE}" || \
+        curl -fsSL --connect-timeout 20 --max-time 300 --retry 5 --retry-delay 2 --retry-all-errors \
+          "https://go.dev/dl/${GO_TARBALL}" \
+          -o "${GO_ARCHIVE}"; \
+    else \
+        curl -fsSL --connect-timeout 20 --max-time 300 --retry 5 --retry-delay 2 --retry-all-errors \
+          "https://go.dev/dl/${GO_TARBALL}" \
+          -o "${GO_ARCHIVE}"; \
+    fi && \
     echo "${GO_SHA256}  ${GO_ARCHIVE}" | sha256sum -c - && \
     rm -rf "${GOROOT}" && \
     tar -C /usr/local -xzf "${GO_ARCHIVE}" && \
@@ -121,30 +152,51 @@ RUN RESOLVED_GO_VERSION="${GO_VERSION}" && \
 # Install nodejs and npm
 RUN apt-get remove -y nodejs && \
     apt-get install -y nodejs && \
-    npm install -g npm@latest
+    npm install -g npm@latest && \
+    if [ "${USE_CN_MIRROR}" = "true" ]; then \
+        npm config set registry https://registry.npmmirror.com; \
+    fi
 
 # Install clangd-20
 RUN apt-get install -y --no-install-recommends clangd-20 && \
     update-alternatives --install /usr/bin/clangd clangd /usr/bin/clangd-20 100
 
-# Install python packages
+# Install python packages (use Tsinghua PyPI mirror in CN mode for faster download)
 RUN export DEBIAN_FRONTEND=noninteractive && \
+    if [ "${USE_CN_MIRROR}" = "true" ]; then \
+        pip3 config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple && \
+        pip3 config set global.trusted-host pypi.tuna.tsinghua.edu.cn; \
+    fi && \
     pip3 install --upgrade pip && \
     pip3 install \
     numpy fabric2 psutil pandas toml distro \
     faker gprof2dot tzlocal matplotlib \
     ipykernel taos-ws-py taospy baostock tushare
 
-# Install Bazelisk for ARM64 because Bazel's official apt repo is amd64-only.
+# Install Bazelisk for ARM64 (always) and AMD64 (in CN mirror mode, since we skip apt bazel)
 RUN EFFECTIVE_ARCH="${TARGETARCH_OVERRIDE:-${TARGETARCH}}" && \
     if [ -z "${EFFECTIVE_ARCH}" ]; then EFFECTIVE_ARCH="$(dpkg --print-architecture)"; fi && \
     case "${EFFECTIVE_ARCH}" in \
-      x86_64) ;; \
-      amd64) ;; \
-      arm64) curl -Lo /usr/local/bin/bazel https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-arm64 && \
-        chmod +x /usr/local/bin/bazel ;; \
+      x86_64) EFFECTIVE_ARCH="amd64" ;; \
+      amd64|arm64) ;; \
       *) echo "Unsupported target architecture: ${EFFECTIVE_ARCH}" >&2; exit 1 ;; \
-    esac
+    esac && \
+    if [ "${EFFECTIVE_ARCH}" = "arm64" ] || [ "${USE_CN_MIRROR}" = "true" ]; then \
+      BAZELISK_ARCH="${EFFECTIVE_ARCH}" && \
+      if [ "${USE_CN_MIRROR}" = "true" ]; then \
+        curl -fsSL --connect-timeout 10 --max-time 60 --retry 2 \
+          "https://ghp.ci/https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-${BAZELISK_ARCH}" \
+          -o /usr/local/bin/bazel || \
+        curl -fsSL \
+          "https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-${BAZELISK_ARCH}" \
+          -o /usr/local/bin/bazel; \
+      else \
+        curl -fsSL \
+          "https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-${BAZELISK_ARCH}" \
+          -o /usr/local/bin/bazel; \
+      fi && \
+      chmod +x /usr/local/bin/bazel; \
+    fi
 
 RUN apt-get -y install --no-install-recommends \
     autoconf libtool automake autotools-dev screen
@@ -152,9 +204,20 @@ RUN apt-get -y install --no-install-recommends \
 # Install AI CLIs
 RUN npm install -g opencode-ai @anthropic-ai/claude-code @openai/codex
 
+# Configure Go modules proxy based on USE_CN_MIRROR
+RUN if [ "${USE_CN_MIRROR}" = "true" ]; then \
+        go env -w GOPROXY=https://goproxy.cn,direct; \
+    fi
+
 # Install kimi code
 ENV PATH="/root/.local/bin:$PATH"
-RUN curl -LsSf https://code.kimi.com/install.sh | bash
+RUN if [ "${USE_CN_MIRROR}" = "true" ]; then \
+        curl -fsSL --connect-timeout 10 --max-time 60 --retry 2 \
+          "https://ghp.ci/https://code.kimi.com/install.sh" | bash || \
+        curl -fsSL https://code.kimi.com/install.sh | bash; \
+    else \
+        curl -fsSL https://code.kimi.com/install.sh | bash; \
+    fi
 
 # =============================================================================
 # Stage 2: Final image with SSH and code-server
@@ -162,6 +225,7 @@ RUN curl -LsSf https://code.kimi.com/install.sh | bash
 # =============================================================================
 FROM base AS devbox
 
+ARG USE_CN_MIRROR=false
 ARG http_proxy
 ARG https_proxy
 ARG all_proxy
@@ -190,16 +254,31 @@ RUN apt-get update && \
       *) echo "Unsupported code-server architecture: ${CODE_SERVER_ARCH}" >&2; exit 1 ;; \
     esac && \
     if [ -z "${RESOLVED_CODE_SERVER_VERSION}" ] || [ "${RESOLVED_CODE_SERVER_VERSION}" = "latest" ]; then \
-      LATEST_RELEASE_URL="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/coder/code-server/releases/latest)" && \
+      if [ "${USE_CN_MIRROR}" = "true" ]; then \
+        LATEST_RELEASE_URL="$(curl -fsSLI --connect-timeout 10 --max-time 30 -o /dev/null -w '%{url_effective}' \
+          "https://ghp.ci/https://github.com/coder/code-server/releases/latest" 2>/dev/null || \
+          curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/coder/code-server/releases/latest)"; \
+      else \
+        LATEST_RELEASE_URL="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/coder/code-server/releases/latest)"; \
+      fi && \
       RESOLVED_CODE_SERVER_VERSION="${LATEST_RELEASE_URL##*/}" && \
       RESOLVED_CODE_SERVER_VERSION="${RESOLVED_CODE_SERVER_VERSION#v}" && \
       test -n "${RESOLVED_CODE_SERVER_VERSION}"; \
     fi && \
     CODE_SERVER_DEB="/tmp/code-server_${RESOLVED_CODE_SERVER_VERSION}_${CODE_SERVER_ARCH}.deb" && \
     echo "Installing code-server v${RESOLVED_CODE_SERVER_VERSION}" && \
-    curl -fsSL --connect-timeout 20 --max-time 300 --retry 5 --retry-delay 2 --retry-all-errors \
-      "${CODE_SERVER_RELEASE_BASE_URL}/v${RESOLVED_CODE_SERVER_VERSION}/code-server_${RESOLVED_CODE_SERVER_VERSION}_${CODE_SERVER_ARCH}.deb" \
-      -o "${CODE_SERVER_DEB}" && \
+    if [ "${USE_CN_MIRROR}" = "true" ]; then \
+        curl -fsSL --connect-timeout 20 --max-time 300 --retry 3 --retry-delay 2 \
+          "https://ghp.ci/https://github.com/coder/code-server/releases/download/v${RESOLVED_CODE_SERVER_VERSION}/code-server_${RESOLVED_CODE_SERVER_VERSION}_${CODE_SERVER_ARCH}.deb" \
+          -o "${CODE_SERVER_DEB}" || \
+        curl -fsSL --connect-timeout 20 --max-time 300 --retry 5 --retry-delay 2 --retry-all-errors \
+          "${CODE_SERVER_RELEASE_BASE_URL}/v${RESOLVED_CODE_SERVER_VERSION}/code-server_${RESOLVED_CODE_SERVER_VERSION}_${CODE_SERVER_ARCH}.deb" \
+          -o "${CODE_SERVER_DEB}"; \
+    else \
+        curl -fsSL --connect-timeout 20 --max-time 300 --retry 5 --retry-delay 2 --retry-all-errors \
+          "${CODE_SERVER_RELEASE_BASE_URL}/v${RESOLVED_CODE_SERVER_VERSION}/code-server_${RESOLVED_CODE_SERVER_VERSION}_${CODE_SERVER_ARCH}.deb" \
+          -o "${CODE_SERVER_DEB}"; \
+    fi && \
     dpkg -i "${CODE_SERVER_DEB}" && \
     rm -f "${CODE_SERVER_DEB}" && \
     # Verify installation
