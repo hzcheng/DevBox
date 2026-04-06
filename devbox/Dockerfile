@@ -254,31 +254,16 @@ RUN apt-get update && \
       *) echo "Unsupported code-server architecture: ${CODE_SERVER_ARCH}" >&2; exit 1 ;; \
     esac && \
     if [ -z "${RESOLVED_CODE_SERVER_VERSION}" ] || [ "${RESOLVED_CODE_SERVER_VERSION}" = "latest" ]; then \
-      if [ "${USE_CN_MIRROR}" = "true" ]; then \
-        LATEST_RELEASE_URL="$(curl -fsSLI --connect-timeout 10 --max-time 30 -o /dev/null -w '%{url_effective}' \
-          "https://ghp.ci/https://github.com/coder/code-server/releases/latest" 2>/dev/null || \
-          curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/coder/code-server/releases/latest)"; \
-      else \
-        LATEST_RELEASE_URL="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/coder/code-server/releases/latest)"; \
-      fi && \
+      LATEST_RELEASE_URL="$(curl -fsSLI --connect-timeout 10 --max-time 30 --retry 5 --retry-delay 2 --retry-all-errors -o /dev/null -w '%{url_effective}' https://github.com/coder/code-server/releases/latest)" && \
       RESOLVED_CODE_SERVER_VERSION="${LATEST_RELEASE_URL##*/}" && \
       RESOLVED_CODE_SERVER_VERSION="${RESOLVED_CODE_SERVER_VERSION#v}" && \
       test -n "${RESOLVED_CODE_SERVER_VERSION}"; \
     fi && \
     CODE_SERVER_DEB="/tmp/code-server_${RESOLVED_CODE_SERVER_VERSION}_${CODE_SERVER_ARCH}.deb" && \
     echo "Installing code-server v${RESOLVED_CODE_SERVER_VERSION}" && \
-    if [ "${USE_CN_MIRROR}" = "true" ]; then \
-        curl -fsSL --connect-timeout 20 --max-time 300 --retry 3 --retry-delay 2 \
-          "https://ghp.ci/https://github.com/coder/code-server/releases/download/v${RESOLVED_CODE_SERVER_VERSION}/code-server_${RESOLVED_CODE_SERVER_VERSION}_${CODE_SERVER_ARCH}.deb" \
-          -o "${CODE_SERVER_DEB}" || \
-        curl -fsSL --connect-timeout 20 --max-time 300 --retry 5 --retry-delay 2 --retry-all-errors \
-          "${CODE_SERVER_RELEASE_BASE_URL}/v${RESOLVED_CODE_SERVER_VERSION}/code-server_${RESOLVED_CODE_SERVER_VERSION}_${CODE_SERVER_ARCH}.deb" \
-          -o "${CODE_SERVER_DEB}"; \
-    else \
-        curl -fsSL --connect-timeout 20 --max-time 300 --retry 5 --retry-delay 2 --retry-all-errors \
-          "${CODE_SERVER_RELEASE_BASE_URL}/v${RESOLVED_CODE_SERVER_VERSION}/code-server_${RESOLVED_CODE_SERVER_VERSION}_${CODE_SERVER_ARCH}.deb" \
-          -o "${CODE_SERVER_DEB}"; \
-    fi && \
+    curl -fsSL --connect-timeout 20 --max-time 300 --retry 5 --retry-delay 2 --retry-all-errors \
+      "${CODE_SERVER_RELEASE_BASE_URL}/v${RESOLVED_CODE_SERVER_VERSION}/code-server_${RESOLVED_CODE_SERVER_VERSION}_${CODE_SERVER_ARCH}.deb" \
+      -o "${CODE_SERVER_DEB}" && \
     dpkg -i "${CODE_SERVER_DEB}" && \
     rm -f "${CODE_SERVER_DEB}" && \
     # Verify installation
