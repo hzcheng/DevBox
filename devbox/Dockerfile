@@ -97,7 +97,7 @@ RUN EFFECTIVE_ARCH="${TARGETARCH_OVERRIDE:-${TARGETARCH}}" && \
     if [ -z "${EFFECTIVE_ARCH}" ]; then EFFECTIVE_ARCH="$(dpkg --print-architecture)"; fi && \
     PACKAGES="tree vim tmux python3-pip tldr patchelf \
 docker-ce-cli docker-compose-plugin docker-buildx-plugin \
-libjansson-dev libsnappy-dev \
+libjansson-dev libsnappy-dev libyaml-cpp-dev \
 liblzma-dev libz-dev pkg-config libssl-dev graphviz \
 locales" && \
     case "${EFFECTIVE_ARCH}" in \
