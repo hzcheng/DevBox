@@ -299,3 +299,64 @@ RUN sed -i 's/\r$//' /usr/local/bin/start-services.sh && chmod +x /usr/local/bin
 
 # Expose code-server port
 EXPOSE 8080 22
+
+# =============================================================================
+# Stage 3: Xiaohongshu-focused development image
+# This stage layers Ubuntu-compatible XHS development tools on top of devbox
+# =============================================================================
+FROM devbox AS devbox-red
+
+ARG USE_CN_MIRROR=false
+ARG http_proxy
+ARG https_proxy
+ARG all_proxy
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG ALL_PROXY
+ARG TARGETARCH
+ARG TARGETARCH_OVERRIDE
+
+# Install system development libraries and upgrade GCC to 14
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgoogle-perftools-dev libzstd-dev liblz4-dev libtbb-dev && \
+    add-apt-repository ppa:ubuntu-toolchain-r/test -y && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends gcc-14 g++-14 && \
+    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100 && \
+    update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
+
+# Install Bazel 7.4.1 and dependencies aligned with XHS internal builds
+RUN mkdir -p /root/bazel-download && \
+    curl -fsSL --connect-timeout 20 --max-time 300 --retry 3 --retry-delay 2 \
+    -o /root/bazel-download/cpython-3.11.7+20240107-x86_64-unknown-linux-gnu-install_only.tar.gz \
+    "https://artifactory.devops.xiaohongshu.com/artifactory/cpp-dependency/bcr/cpython/cpython-3.11.7%2B20240107-x86_64-unknown-linux-gnu-install_only.tar.gz" && \
+    curl -fsSL --connect-timeout 20 --max-time 300 --retry 3 --retry-delay 2 \
+    -o /root/bazel-download/bazel-skylib-1.6.1.tar.gz \
+    "https://artifactory.devops.xiaohongshu.com/artifactory/cpp-dependency/bcr/bazel-skylib/bazel-skylib-1.6.1.tar.gz" && \
+    curl -fsSL --connect-timeout 20 --max-time 300 --retry 3 --retry-delay 2 \
+    -o /tmp/bazel-7.4.1-installer-linux-x86_64.sh \
+    "https://mirrors.huaweicloud.com/bazel/7.4.1/bazel-7.4.1-installer-linux-x86_64.sh" && \
+    bash /tmp/bazel-7.4.1-installer-linux-x86_64.sh && \
+    bazel --version && \
+    rm -f /tmp/bazel-7.4.1-installer-linux-x86_64.sh
+
+# Configure Bazel for XHS internal registry and remote cache
+RUN printf '\ncommon --enable_bzlmod\ncommon --registry=https://bazel-build.devops.xiaohongshu.com\nbuild --remote_cache=https://bazel-remote.devops.xiaohongshu.com\nbuild --cxxopt="-std=c++20"\n' >> /etc/bazel.bazelrc
+
+# Install protoc 4.25.2
+RUN PROTOC_ARCH="${TARGETARCH_OVERRIDE:-${TARGETARCH}}" && \
+    if [ -z "${PROTOC_ARCH}" ]; then PROTOC_ARCH="$(dpkg --print-architecture)"; fi && \
+    case "${PROTOC_ARCH}" in \
+      x86_64) PROTOC_ARCH="x86_64" ;; \
+      amd64) PROTOC_ARCH="x86_64" ;; \
+      arm64) PROTOC_ARCH="aarch_64" ;; \
+      *) echo "Unsupported protoc architecture: ${PROTOC_ARCH}" >&2; exit 1 ;; \
+    esac && \
+    PROTOC_ZIP="protoc-25.2-linux-${PROTOC_ARCH}.zip" && \
+    PROTOC_URL="https://github.com/protocolbuffers/protobuf/releases/download/v25.2/${PROTOC_ZIP}" && \
+    curl -fsSL --connect-timeout 20 --max-time 300 --retry 5 --retry-delay 2 --retry-all-errors \
+      "${PROTOC_URL}" -o "/tmp/${PROTOC_ZIP}" && \
+    unzip -o "/tmp/${PROTOC_ZIP}" -d /usr/local && \
+    rm -f "/tmp/${PROTOC_ZIP}" && \
+    protoc --version
+

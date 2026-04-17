@@ -41,7 +41,10 @@
                 "moonshot-ai.kimi-code",
                 "openai.chatgpt",
                 "anthropic.claude-code",
-                "OrenMaoz.markco"
+                "OrenMaoz.markco",
+                "sankethdev.vscode-proto",
+                "BazelBuild.vscode-bazel",
+                "bufbuild.vscode-buf"
             ]
         }
     },

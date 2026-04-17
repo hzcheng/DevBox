@@ -4,6 +4,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: ${DOCKER_BUILD_TARGET:-devbox}
       network: host
       args:
         USE_CN_MIRROR: ${USE_CN_MIRROR:-false}
@@ -16,7 +17,7 @@ services:
         HTTP_PROXY: ${BUILD_PROXY}
         HTTPS_PROXY: ${BUILD_PROXY}
         ALL_PROXY: ${BUILD_PROXY}
-    image: home.teraai.cn/hzcheng/devbox:${ARCH:-local}
+    image: home.teraai.cn/hzcheng/devbox:${ARCH:-local}-${DOCKER_BUILD_TARGET:-devbox}
     container_name: ${PROJECT_NAME}-devbox
     restart: unless-stopped
     ulimits:
