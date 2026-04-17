@@ -597,6 +597,19 @@ install_extensions_async() {
 }
 
 # ============================================
+# Claude Proxy 启动
+# ============================================
+setup_claude_proxy() {
+    local output
+    output="$(/usr/local/bin/start-claude-proxy.sh 2>&1)" || true
+    while IFS= read -r line; do log_info "${line}"; done <<< "${output}"
+    if curl -sf --max-time 2 "http://127.0.0.1:8089" >/dev/null 2>&1; then
+        export ANTHROPIC_BASE_URL="http://127.0.0.1:8089"
+        export ANTHROPIC_API_KEY="dummy"
+    fi
+}
+
+# ============================================
 # 主函数
 # ============================================
 main() {
@@ -616,10 +629,13 @@ main() {
     # 4. 配置 code-server
     setup_code_server_config
 
-    # 5. 启动 code-server（后台）
+    # 5. 启动 claude proxy（在 code-server 之前，使 code-server 继承环境变量）
+    setup_claude_proxy
+
+    # 6. 启动 code-server（后台）
     start_code_server
 
-    # 6. 启动自动更新循环（后台）
+    # 7. 启动自动更新循环（后台）
     if is_code_server_auto_update_enabled; then
         code_server_update_loop &
         local auto_update_pid=$!
@@ -628,7 +644,7 @@ main() {
         log_info "code-server auto-update loop disabled"
     fi
 
-    # 7. 在后台异步安装插件（避免阻碍服务访问）
+    # 8. 在后台异步安装插件（避免阻碍服务访问）
     install_extensions_async &
     local install_pid=$!
     log_info "Extension installation running in background (PID: ${install_pid})"
@@ -639,7 +655,7 @@ main() {
     log_info "Code Server: port ${CODE_SERVER_PORT:-8080}"
     log_info "=========================================="
 
-    # 8. 保持容器运行，等待所有后台进程
+    # 9. 保持容器运行，等待所有后台进程
     wait
 }
 

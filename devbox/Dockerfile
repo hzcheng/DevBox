@@ -290,11 +290,11 @@ RUN apt-get update && \
 # Create code-server config directory
 RUN mkdir -p /root/.config/code-server
 
-COPY ./tmux.conf /root/.tmux.conf
+COPY devbox/tmux.conf /root/.tmux.conf
 RUN sed -i 's/\r$//' /root/.tmux.conf
 
 # Package startup script
-COPY ./start-services.sh /usr/local/bin/start-services.sh
+COPY devbox/start-services.sh /usr/local/bin/start-services.sh
 RUN sed -i 's/\r$//' /usr/local/bin/start-services.sh && chmod +x /usr/local/bin/start-services.sh
 
 # Expose code-server port
@@ -359,4 +359,22 @@ RUN PROTOC_ARCH="${TARGETARCH_OVERRIDE:-${TARGETARCH}}" && \
     unzip -o "/tmp/${PROTOC_ZIP}" -d /usr/local && \
     rm -f "/tmp/${PROTOC_ZIP}" && \
     protoc --version
+
+# Install codewiz proxy for transparent Claude Code access.
+# Skip if ANTHROPIC_API_KEY is a real key; otherwise requires CODEWIZ_SESSION_TOKEN
+# env var or ~/.local/share/codewiz/auth.json (persisted via /root volume).
+COPY devbox/codewiz-proxy.py /usr/local/lib/codewiz-proxy.py
+COPY devbox/start-claude-proxy.sh /usr/local/bin/start-claude-proxy.sh
+COPY devbox/claude-proxy-wrapper.sh /usr/local/bin/claude-proxy-wrapper.sh
+RUN sed -i 's/\r$//' /usr/local/lib/codewiz-proxy.py \
+    && sed -i 's/\r$//' /usr/local/bin/start-claude-proxy.sh \
+    && sed -i 's/\r$//' /usr/local/bin/claude-proxy-wrapper.sh \
+    && chmod +x /usr/local/bin/start-claude-proxy.sh \
+    && chmod +x /usr/local/bin/claude-proxy-wrapper.sh \
+    && CLAUDE_SYMLINK="$(which claude)" \
+    && CLAUDE_REAL="$(readlink -f "$CLAUDE_SYMLINK")" \
+    && ln -sf "$CLAUDE_REAL" /usr/local/bin/claude.real \
+    && rm -f "$CLAUDE_SYMLINK" \
+    && cp /usr/local/bin/claude-proxy-wrapper.sh "$CLAUDE_SYMLINK" \
+    && chmod +x "$CLAUDE_SYMLINK"
 

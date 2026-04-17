@@ -49,6 +49,7 @@
         }
     },
     "shutdownAction": "none",
+    "postStartCommand": "/usr/local/bin/start-claude-proxy.sh || true",
     "postCreateCommand": [
         // "pip3 install --upgrade pip"
         // "pip3 install numpy fabric2 psutil pandas toml distro",

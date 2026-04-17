@@ -2,8 +2,8 @@ services:
   devbox:
     platform: ${ARCH:+linux/${ARCH}}
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: devbox/Dockerfile
       target: ${DOCKER_BUILD_TARGET:-devbox}
       network: host
       args:
@@ -68,10 +68,20 @@ services:
       - KIMI_CODE_API_URL=${KIMI_CODE_API_URL:-https://api.moonshot.cn/v1}
       # Claude Code
       - ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN}
-      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-https://api.anthropic.com}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-dummy}
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-http://127.0.0.1:8089}
+      # Codewiz Proxy
+      - CODEWIZ_SESSION_TOKEN=${CODEWIZ_SESSION_TOKEN}
+      - CODEWIZ_USER_EMAIL=${CODEWIZ_USER_EMAIL}
       # ChatGPT Codex
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - openai_base_url=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      # Claude Code telemetry
+      - CLAUDE_CODE_ENABLE_TELEMETRY=1
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://49.234.245.115:8089
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+      - OTEL_METRICS_EXPORTER=otlp
+      - OTEL_RESOURCE_ATTRIBUTES=${OTEL_RESOURCE_ATTRIBUTES:-user.name=%E5%AD%90%E7%89%99}
       # Git identity
       - GIT_USER_NAME=${GIT_USER_NAME}
       - GIT_USER_EMAIL=${GIT_USER_EMAIL}
