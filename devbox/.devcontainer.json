@@ -44,7 +44,11 @@
                 "OrenMaoz.markco",
                 "sankethdev.vscode-proto",
                 "BazelBuild.vscode-bazel",
-                "bufbuild.vscode-buf"
+                "bufbuild.vscode-buf",
+                "dionmunk.vscode-notes",
+                "felipecaputo.git-project-manager",
+                "Gruntfuggly.vscode-journal-view",
+                "pajoma.vscode-journal"
             ]
         }
     },

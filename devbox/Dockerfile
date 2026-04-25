@@ -316,14 +316,16 @@ ARG ALL_PROXY
 ARG TARGETARCH
 ARG TARGETARCH_OVERRIDE
 
-# Install system development libraries and upgrade GCC to 14
+# Install system development libraries, upgrade GCC to 12, and install lld.
+# lld is required because prebuilt XHS archives (libredraft, librocksdb) are non-PIC;
+# gold rejects them when linking, and bfd lacks --start-lib support that Bazel relies on.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgoogle-perftools-dev libzstd-dev liblz4-dev libtbb-dev && \
+    libgoogle-perftools-dev libzstd-dev liblz4-dev libtbb-dev lld && \
     add-apt-repository ppa:ubuntu-toolchain-r/test -y && \
     apt-get update && \
-    apt-get install -y --no-install-recommends gcc-14 g++-14 && \
-    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100 && \
-    update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
+    apt-get install -y --no-install-recommends gcc-12 g++-12 && \
+    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 100 && \
+    update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 100
 
 # Install Bazel 7.4.1 and dependencies aligned with XHS internal builds
 RUN mkdir -p /root/bazel-download && \
@@ -340,8 +342,12 @@ RUN mkdir -p /root/bazel-download && \
     bazel --version && \
     rm -f /tmp/bazel-7.4.1-installer-linux-x86_64.sh
 
-# Configure Bazel for XHS internal registry and remote cache
-RUN printf '\ncommon --enable_bzlmod\ncommon --registry=https://bazel-build.devops.xiaohongshu.com\nbuild --remote_cache=https://bazel-remote.devops.xiaohongshu.com\nbuild --cxxopt="-std=c++20"\n' >> /etc/bazel.bazelrc
+# Configure Bazel for XHS internal registry and remote cache.
+# --linkopt=-fuse-ld=lld: use lld instead of gold; gold rejects R_X86_64_32 relocations
+#   from prebuilt non-PIC archives (libredraft, librocksdb), and bfd lacks --start-lib.
+# --linkopt=-no-pie: disable PIE so lld does not require all objects to be PIC;
+#   correct for server binaries that link prebuilt non-PIC static archives.
+RUN printf '\ncommon --enable_bzlmod\ncommon --registry=https://bazel-build.devops.xiaohongshu.com\nbuild --remote_cache=https://bazel-remote.devops.xiaohongshu.com\nbuild --cxxopt="-std=c++20"\nbuild --linkopt=-fuse-ld=lld\nbuild --linkopt=-no-pie\n' >> /etc/bazel.bazelrc
 
 # Install protoc 4.25.2
 RUN PROTOC_ARCH="${TARGETARCH_OVERRIDE:-${TARGETARCH}}" && \
