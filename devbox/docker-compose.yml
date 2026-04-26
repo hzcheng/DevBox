@@ -17,6 +17,11 @@ services:
         HTTP_PROXY: ${BUILD_PROXY}
         HTTPS_PROXY: ${BUILD_PROXY}
         ALL_PROXY: ${BUILD_PROXY}
+        DEV_USER: ${DEV_USER:-root}
+        DEV_HOME: ${DEV_HOME:-/root}
+        DEV_UID: ${DEV_UID:-0}
+        DEV_GID: ${DEV_GID:-0}
+        DEV_GRANT_SUDO: ${DEV_GRANT_SUDO:-false}
     image: home.teraai.cn/hzcheng/devbox:${ARCH:-local}-${DOCKER_BUILD_TARGET:-devbox}
     container_name: ${PROJECT_NAME}-devbox
     restart: unless-stopped
@@ -30,12 +35,14 @@ services:
     tty: true
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock # for docker-in-docker
-      - ${DEV_ROOT:-dev-root}:/root
-      - ${DEV_PROJECTS:-dev-projects}:/Projects
-      - ..:/Projects/DevBox:cached
-      - ./config/code-server/User/keybindings.json:/root/.local/share/code-server/User/keybindings.json:cached
-      - ./config/code-server/User/settings.json:/root/.local/share/code-server/User/settings.json:cached
-      - ./config/code-server/User/projects.json:/root/.local/share/code-server/User/globalStorage/alefragnani.project-manager/projects.json:cached
+      - ${HOST_SSH_DIR:-~/.ssh}:${DEV_HOME:-/root}/.ssh:ro # mount ssh
+      - /data/work/mnt:/mnt
+      - ${DEV_ROOT:-dev-root}:${DEV_HOME:-/root}
+      - ${DEV_PROJECTS:-dev-projects}:${DEV_HOME:-/root}/projects
+      - ..:${DEV_HOME:-/root}/projects/DevBox:cached
+      - ./config/code-server/User/keybindings.json:${DEV_HOME:-/root}/.local/share/code-server/User/keybindings.json:cached
+      - ./config/code-server/User/settings.json:${DEV_HOME:-/root}/.local/share/code-server/User/settings.json:cached
+      - ./config/code-server/User/projects.json:${DEV_HOME:-/root}/.local/share/code-server/User/globalStorage/alefragnani.project-manager/projects.json:cached
     environment:
       - TZ=Asia/Shanghai
       - LANG=zh_CN.UTF-8
@@ -85,6 +92,10 @@ services:
       # Git identity
       - GIT_USER_NAME=${GIT_USER_NAME}
       - GIT_USER_EMAIL=${GIT_USER_EMAIL}
+      # Dev user
+      - DEV_USER=${DEV_USER:-root}
+      - DEV_HOME=${DEV_HOME:-/root}
+      - DEV_GRANT_SUDO=${DEV_GRANT_SUDO:-false}
     command: /usr/local/bin/start-services.sh
     security_opt:
       - seccomp:unconfined

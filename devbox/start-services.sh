@@ -2,6 +2,19 @@
 
 set -e
 
+# Dev user configuration (passed via environment from docker-compose)
+DEV_USER="${DEV_USER:-root}"
+DEV_HOME="${DEV_HOME:-/root}"
+DEV_GRANT_SUDO="${DEV_GRANT_SUDO:-false}"
+
+# Global code-server command: wrap with gosu when running as non-root so that
+# all callers (start, restart, install_extensions) use the same identity.
+if [ "${DEV_USER}" != "root" ]; then
+    CODE_SERVER_CMD="gosu ${DEV_USER} code-server"
+else
+    CODE_SERVER_CMD="code-server"
+fi
+
 CODE_SERVER_PID=""
 
 # ============================================
@@ -41,22 +54,94 @@ is_port_in_use() {
 }
 
 # ============================================
+# 开发用户初始化
+# ============================================
+setup_dev_user() {
+    [ "${DEV_USER}" = "root" ] && return 0
+
+    log_info "Setting up dev user: ${DEV_USER} (home: ${DEV_HOME})"
+
+    # Ensure home directory exists (volume may be empty on first run)
+    mkdir -p "${DEV_HOME}"
+
+    # First-boot only: recursively fix ownership of pre-existing root-owned files.
+    # The sentinel lives outside the volume so it survives image rebuilds but not
+    # volume resets, which is exactly when a full chown-R is needed again.
+    local sentinel="/var/lib/devbox-initialized-${DEV_USER}"
+    if [ ! -f "${sentinel}" ]; then
+        log_info "First boot: fixing ownership of ${DEV_HOME} recursively (this may take a moment)..."
+        # Use find to skip read-only bind mounts (e.g. ~/.ssh mounted with :ro).
+        find "${DEV_HOME}" -mount -exec chown "${DEV_USER}:${DEV_USER}" {} + 2>/dev/null || true
+        touch "${sentinel}"
+        log_info "Ownership fixed. Subsequent boots will skip this step."
+    else
+        # Subsequent boots: ensure just the top-level home dir has correct ownership.
+        chown "${DEV_USER}:${DEV_USER}" "${DEV_HOME}"
+    fi
+
+    # Ensure projects directory exists and is owned by the dev user
+    mkdir -p "${DEV_HOME}/projects"
+    chown "${DEV_USER}:${DEV_USER}" "${DEV_HOME}/projects"
+
+    # Populate shell dotfiles from /etc/skel if missing (volume mount wipes them).
+    for skel_file in /etc/skel/.*; do
+        [ -f "${skel_file}" ] || continue
+        dest="${DEV_HOME}/${skel_file##/etc/skel/}"
+        if [ ! -e "${dest}" ]; then
+            cp "${skel_file}" "${dest}"
+            chown "${DEV_USER}:${DEV_USER}" "${dest}"
+        fi
+    done
+
+    # Inject devbox prompt into ~/.bashrc if not already present.
+    # /etc/profile.d/ only runs for login shells; VS Code terminals are non-login interactive,
+    # so we source the prompt script from ~/.bashrc instead.
+    local bashrc="${DEV_HOME}/.bashrc"
+    if [ -f "${bashrc}" ] && ! grep -q 'devbox-prompt' "${bashrc}"; then
+        printf '\n# devbox prompt (git branch + newline)\n[ -f /etc/profile.d/devbox-prompt.sh ] && . /etc/profile.d/devbox-prompt.sh\n' >> "${bashrc}"
+        chown "${DEV_USER}:${DEV_USER}" "${bashrc}"
+    fi
+
+    # Symlink global tmux.conf into user home (Dockerfile copies it to /etc/tmux.conf)
+    if [ -f /etc/tmux.conf ] && [ ! -e "${DEV_HOME}/.tmux.conf" ]; then
+        ln -sf /etc/tmux.conf "${DEV_HOME}/.tmux.conf"
+        chown -h "${DEV_USER}:${DEV_USER}" "${DEV_HOME}/.tmux.conf"
+    fi
+
+    # Add dev user to the docker group using the host socket's actual GID.
+    # The GID is host-specific and unknown at image build time, so we handle it here.
+    # Docker is set as the primary group (not just supplementary) because Node.js child
+    # processes drop supplementary groups on fork, which would break docker socket access
+    # inside VS Code terminals.
+    local docker_gid
+    docker_gid=$(stat -c '%g' /var/run/docker.sock 2>/dev/null || true)
+    if [ -n "${docker_gid}" ] && [ "${docker_gid}" != "0" ]; then
+        groupadd --gid "${docker_gid}" docker 2>/dev/null || true
+        usermod -g docker "${DEV_USER}" 2>/dev/null || true
+        log_info "Set docker (gid=${docker_gid}) as primary group for ${DEV_USER}"
+    fi
+}
+
+# ============================================
 # SSH 服务管理
 # ============================================
 setup_ssh() {
     log_info "Setting up SSH service..."
-    
+
     mkdir -p /var/run/sshd
-    
-    # Configure SSH if public key is provided
+
+    # Configure SSH public key for the dev user (root or non-root)
     if [ -n "$SSH_PUBLIC_KEY" ]; then
-        log_info "Configuring SSH public key authentication..."
-        mkdir -p /root/.ssh
-        echo "$SSH_PUBLIC_KEY" > /root/.ssh/authorized_keys
-        chmod 700 /root/.ssh
-        chmod 600 /root/.ssh/authorized_keys
+        log_info "Configuring SSH public key authentication for ${DEV_USER}..."
+        mkdir -p "${DEV_HOME}/.ssh"
+        echo "$SSH_PUBLIC_KEY" > "${DEV_HOME}/.ssh/authorized_keys"
+        chmod 700 "${DEV_HOME}/.ssh"
+        chmod 600 "${DEV_HOME}/.ssh/authorized_keys"
+        if [ "${DEV_USER}" != "root" ]; then
+            chown -R "${DEV_USER}:${DEV_USER}" "${DEV_HOME}/.ssh"
+        fi
     fi
-    
+
     # Start SSH daemon in background
     /usr/sbin/sshd -D &
     log_info "SSH service started on port 22"
@@ -67,20 +152,20 @@ setup_ssh() {
 # ============================================
 setup_git() {
     log_info "Configuring Git..."
-    
-    if [ -n "$GIT_USER_NAME" ]; then
-        git config --global user.name "$GIT_USER_NAME"
-        log_info "Git user.name set to: $GIT_USER_NAME"
-    fi
-    
-    if [ -n "$GIT_USER_EMAIL" ]; then
-        git config --global user.email "$GIT_USER_EMAIL"
-        log_info "Git user.email set to: $GIT_USER_EMAIL"
-    fi
 
-    git config --global init.defaultBranch main
-    
-    git config --global credential.helper store
+    # Run as dev user so ~/.gitconfig lands in DEV_HOME. Use a single subshell to
+    # avoid forking gosu once per config key.
+    local as_dev_user=""
+    [ "${DEV_USER}" != "root" ] && as_dev_user="gosu ${DEV_USER}"
+
+    ${as_dev_user} bash -c "
+        [ -n '${GIT_USER_NAME}' ]  && git config --global user.name  '${GIT_USER_NAME}'
+        [ -n '${GIT_USER_EMAIL}' ] && git config --global user.email '${GIT_USER_EMAIL}'
+        git config --global init.defaultBranch main
+        git config --global credential.helper store
+    "
+    [ -n "${GIT_USER_NAME}" ]  && log_info "Git user.name set to: ${GIT_USER_NAME}"
+    [ -n "${GIT_USER_EMAIL}" ] && log_info "Git user.email set to: ${GIT_USER_EMAIL}"
 }
 
 # ============================================
@@ -169,19 +254,34 @@ ensure_code_server_installed() {
 setup_code_server_config() {
     log_info "Setting up code-server configuration..."
 
-    mkdir -p /root/.config/code-server
-    cat > /root/.config/code-server/config.yaml <<EOF
+    local config_dir="${DEV_HOME}/.config/code-server"
+    mkdir -p "${config_dir}"
+    cat > "${config_dir}/config.yaml" <<EOF
 bind-addr: 0.0.0.0:${CODE_SERVER_PORT:-8080}
 auth: ${CODE_SERVER_AUTH:-password}
 password: ${CODE_SERVER_PASSWORD:-devbox}
 cert: false
 EOF
+    if [ "${DEV_USER}" != "root" ]; then
+        chown -R "${DEV_USER}:${DEV_USER}" "${DEV_HOME}/.config"
+    fi
 }
 
 start_code_server() {
     log_info "Starting code-server on port ${CODE_SERVER_PORT:-8080}..."
 
-    /usr/bin/code-server --config /root/.config/code-server/config.yaml /root/Projects &
+    local config="${DEV_HOME}/.config/code-server/config.yaml"
+    local workdir="${DEV_HOME}/projects"
+
+    if [ "${DEV_USER}" != "root" ]; then
+        # Inject DEV_HOME/.local/bin so user-local tools (e.g. pip-installed CLIs) are on PATH.
+        # Use su -s to start a login shell as the dev user so all supplementary groups
+        # (including docker) are inherited by code-server and its terminal children.
+        PATH="${DEV_HOME}/.local/bin:${PATH}" \
+            su -s /bin/bash -c "/usr/bin/code-server --config '${config}' '${workdir}'" "${DEV_USER}" &
+    else
+        /usr/bin/code-server --config "${config}" "${workdir}" &
+    fi
     CODE_SERVER_PID=$!
     log_info "code-server started (PID: ${CODE_SERVER_PID})"
 }
@@ -516,9 +616,8 @@ install_marketplace_vsix() {
         return 1
     fi
     
-    code-server --install-extension "${vsix_path}" --force
+    ${CODE_SERVER_CMD} --install-extension "${vsix_path}" --force
     rm -f "${vsix_path}"
-    code-server --list-extensions | grep -Fx "${extension_id}" >/dev/null
 }
 
 install_marketplace_vsix_for_code_version() {
@@ -541,18 +640,24 @@ install_marketplace_vsix_for_code_version() {
 
 install_openvsx_extension() {
     local extension_id="$1"
-    
-    code-server --install-extension "${extension_id}" --force
-    code-server --list-extensions | grep -Fx "${extension_id}" >/dev/null
+    ${CODE_SERVER_CMD} --install-extension "${extension_id}" --force
 }
 
 # 插件安装任务（在后台执行）
 install_extensions_async() {
     log_info "Starting extension installation in background..."
-    
-    # Wait a bit for code-server to fully start
-    sleep 5
-    
+
+    # Poll until code-server is ready to accept extension commands
+    local attempts=0
+    until ${CODE_SERVER_CMD} --list-extensions >/dev/null 2>&1; do
+        sleep 2
+        attempts=$((attempts + 1))
+        if [ "${attempts}" -ge 60 ]; then
+            log_warn "code-server did not become ready after 120s; skipping extension install"
+            return 1
+        fi
+    done
+
     # OpenVSX 插件列表
     local openvsx_extensions=(
         "llvm-vs-code-extensions.vscode-clangd"
@@ -582,8 +687,7 @@ install_extensions_async() {
         "anthropic.claude-code"
         "moonshot-ai.kimi-code"
     )
-    
-    # 安装 OpenVSX 插件
+
     for extension_id in "${openvsx_extensions[@]}"; do
         log_info "Installing extension: ${extension_id}..."
         if install_openvsx_extension "${extension_id}"; then
@@ -592,7 +696,7 @@ install_extensions_async() {
             log_warn "Failed to install: ${extension_id}"
         fi
     done
-    
+
     log_info "Extension installation completed!"
 }
 
@@ -600,9 +704,14 @@ install_extensions_async() {
 # Claude Proxy 启动
 # ============================================
 setup_claude_proxy() {
-    local output
-    output="$(/usr/local/bin/start-claude-proxy.sh 2>&1)" || true
-    while IFS= read -r line; do log_info "${line}"; done <<< "${output}"
+    local proxy_cmd
+    if [ "${DEV_USER}" != "root" ]; then
+        # Run as dev user so HOME resolves to DEV_HOME (where codewiz auth.json lives)
+        proxy_cmd="HOME=${DEV_HOME} gosu ${DEV_USER} /usr/local/bin/start-claude-proxy.sh"
+    else
+        proxy_cmd="/usr/local/bin/start-claude-proxy.sh"
+    fi
+    eval "${proxy_cmd}" 2>&1 | while IFS= read -r line; do log_info "${line}"; done || true
     if curl -sf --max-time 2 "http://127.0.0.1:8089" >/dev/null 2>&1; then
         export ANTHROPIC_BASE_URL="http://127.0.0.1:8089"
         export ANTHROPIC_API_KEY="dummy"
@@ -616,6 +725,9 @@ main() {
     log_info "=========================================="
     log_info "Starting DevBox services..."
     log_info "=========================================="
+
+    # 0. 初始化开发用户（必须最先，其他函数依赖 DEV_HOME 目录已就绪）
+    setup_dev_user
 
     # 1. 启动 SSH 服务
     setup_ssh

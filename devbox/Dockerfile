@@ -225,10 +225,14 @@ RUN CC_SWITCH_ARCH="${TARGETARCH_OVERRIDE:-${TARGETARCH}}" && \
 # Configure Go modules proxy based on USE_CN_MIRROR
 RUN if [ "${USE_CN_MIRROR}" = "true" ]; then \
         go env -w GOPROXY=https://goproxy.cn,direct; \
-    fi
+    fi && \
+    go env -w GONOSUMDB=code.devops.xiaohongshu.com && \
+    go env -w GOPRIVATE=code.devops.xiaohongshu.com
 
-# Install kimi code
-ENV PATH="/root/.local/bin:$PATH"
+# Install kimi code into a global location so non-root users can access it.
+# UV_TOOL_DIR / UV_TOOL_BIN_DIR redirect uv's tool install away from ~/root/.local.
+ENV UV_TOOL_DIR=/usr/local/share/uv-tools
+ENV UV_TOOL_BIN_DIR=/usr/local/bin
 RUN if [ "${USE_CN_MIRROR}" = "true" ]; then \
         curl -fsSL --connect-timeout 10 --max-time 60 --retry 2 \
           "https://ghp.ci/https://code.kimi.com/install.sh" | bash || \
@@ -255,8 +259,8 @@ ARG TARGETARCH_OVERRIDE
 ARG CODE_SERVER_VERSION=latest
 ARG CODE_SERVER_RELEASE_BASE_URL=https://github.com/coder/code-server/releases/download
 
-# Install SSH server
-RUN apt-get install -y --no-install-recommends openssh-server && \
+# Install SSH server and gosu (for clean user-switching in entrypoint)
+RUN apt-get install -y --no-install-recommends openssh-server gosu && \
     sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
     sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
     echo 'root:root' | chpasswd
@@ -287,15 +291,45 @@ RUN apt-get update && \
     # Verify installation
     which code-server && code-server --version
 
-# Create code-server config directory
-RUN mkdir -p /root/.config/code-server
+# Install tmux.conf to a global path so both root and non-root users can symlink it
+COPY devbox/tmux.conf /etc/tmux.conf
+RUN sed -i 's/\r$//' /etc/tmux.conf
 
-COPY devbox/tmux.conf /root/.tmux.conf
-RUN sed -i 's/\r$//' /root/.tmux.conf
+# Global prompt: git branch + newline before $
+COPY devbox/devbox-prompt.sh /etc/profile.d/devbox-prompt.sh
+RUN sed -i 's/\r$//' /etc/profile.d/devbox-prompt.sh && chmod 644 /etc/profile.d/devbox-prompt.sh
 
 # Package startup script
 COPY devbox/start-services.sh /usr/local/bin/start-services.sh
 RUN sed -i 's/\r$//' /usr/local/bin/start-services.sh && chmod +x /usr/local/bin/start-services.sh
+
+# Create non-root dev user if DEV_USER != root.
+# docker group is NOT created here — the socket GID varies per host and is
+# handled dynamically at container startup in setup_dev_user().
+ARG DEV_USER=root
+ARG DEV_HOME=/root
+ARG DEV_UID=0
+ARG DEV_GID=0
+ARG DEV_GRANT_SUDO=false
+RUN if [ "${DEV_USER}" != "root" ]; then \
+      if [ -n "${DEV_GID}" ] && [ "${DEV_GID}" != "0" ]; then \
+        groupadd --gid "${DEV_GID}" --non-unique "${DEV_USER}" 2>/dev/null || groupadd "${DEV_USER}" 2>/dev/null || true; \
+      else \
+        groupadd "${DEV_USER}" 2>/dev/null || true; \
+      fi && \
+      useradd_args="--home-dir ${DEV_HOME} --shell /bin/bash --create-home" && \
+      if [ -n "${DEV_UID}" ] && [ "${DEV_UID}" != "0" ]; then \
+        useradd_args="${useradd_args} --uid ${DEV_UID} --non-unique"; \
+      fi && \
+      if getent group "${DEV_USER}" >/dev/null 2>&1; then \
+        useradd_args="${useradd_args} --gid ${DEV_USER}"; \
+      fi && \
+      useradd ${useradd_args} "${DEV_USER}" && \
+      if [ "${DEV_GRANT_SUDO}" = "true" ]; then \
+        echo "${DEV_USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/"${DEV_USER}" && \
+        chmod 0440 /etc/sudoers.d/"${DEV_USER}"; \
+      fi; \
+    fi
 
 # Expose code-server port
 EXPOSE 8080 22
@@ -327,15 +361,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 100 && \
     update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 100
 
-# Install Bazel 7.4.1 and dependencies aligned with XHS internal builds
-RUN mkdir -p /root/bazel-download && \
-    curl -fsSL --connect-timeout 20 --max-time 300 --retry 3 --retry-delay 2 \
-    -o /root/bazel-download/cpython-3.11.7+20240107-x86_64-unknown-linux-gnu-install_only.tar.gz \
-    "https://artifactory.devops.xiaohongshu.com/artifactory/cpp-dependency/bcr/cpython/cpython-3.11.7%2B20240107-x86_64-unknown-linux-gnu-install_only.tar.gz" && \
-    curl -fsSL --connect-timeout 20 --max-time 300 --retry 3 --retry-delay 2 \
-    -o /root/bazel-download/bazel-skylib-1.6.1.tar.gz \
-    "https://artifactory.devops.xiaohongshu.com/artifactory/cpp-dependency/bcr/bazel-skylib/bazel-skylib-1.6.1.tar.gz" && \
-    curl -fsSL --connect-timeout 20 --max-time 300 --retry 3 --retry-delay 2 \
+# Install Bazel 7.4.1.
+# The pre-downloaded cpython/bazel-skylib tarballs are omitted: they were only
+# a build-time cache and Bazel fetches them automatically on first use anyway.
+# The installer defaults to --prefix=/usr/local so bazel lands in /usr/local/bin,
+# accessible to all users without any PATH changes.
+RUN curl -fsSL --connect-timeout 20 --max-time 300 --retry 3 --retry-delay 2 \
     -o /tmp/bazel-7.4.1-installer-linux-x86_64.sh \
     "https://mirrors.huaweicloud.com/bazel/7.4.1/bazel-7.4.1-installer-linux-x86_64.sh" && \
     bash /tmp/bazel-7.4.1-installer-linux-x86_64.sh && \

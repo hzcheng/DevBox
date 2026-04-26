@@ -2,3 +2,4 @@
 .agents/
 skills-lock.json
 .worktrees/
+devbox/.devcontainer.json
