@@ -274,11 +274,10 @@ start_code_server() {
     local workdir="${DEV_HOME}/projects"
 
     if [ "${DEV_USER}" != "root" ]; then
-        # Inject DEV_HOME/.local/bin so user-local tools (e.g. pip-installed CLIs) are on PATH.
-        # Use su -s to start a login shell as the dev user so all supplementary groups
-        # (including docker) are inherited by code-server and its terminal children.
-        PATH="${DEV_HOME}/.local/bin:${PATH}" \
-            su -s /bin/bash -c "/usr/bin/code-server --config '${config}' '${workdir}'" "${DEV_USER}" &
+        # Use login shell (su -) so code-server and its spawned terminals run under
+        # a complete hzcheng session (correct USER, HOME, groups, PATH).
+        # Prepend .local/bin via env so pip-installed CLIs are available.
+        su - "${DEV_USER}" -c "PATH='${DEV_HOME}/.local/bin:\$PATH' /usr/bin/code-server --config '${config}' '${workdir}'" &
     else
         /usr/bin/code-server --config "${config}" "${workdir}" &
     fi
