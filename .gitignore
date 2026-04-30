@@ -2,4 +2,5 @@
 .agents/
 skills-lock.json
 .worktrees/
-devbox/.devcontainer.json
+claude_proxy.tar.gz
+/claude_proxy/

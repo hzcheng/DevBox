@@ -1,0 +1,65 @@
+{
+    // For format details, see https://aka.ms/devcontainer.json. For config options, see the README at:
+    // https://github.com/microsoft/vscode-dev-containers/tree/v0.241.1/containers/docker-from-docker-compose
+    "name": "DevBox",
+    "dockerComposeFile": "../docker-compose.yml",
+    "service": "devbox",
+    "workspaceFolder": "/home/hzcheng/projects/DevBox",
+    "remoteEnv": {
+        "LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}"
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-vscode.cpptools",
+                "ms-vscode.cmake-tools",
+                "visualstudioexptteam.vscodeintel",
+                "eamodio.gitlens",
+                "matepek.vscode-catch2-test-adapter",
+                "urosvujosevic.explorer-manager",
+                "mhutchie.git-graph",
+                "ms-python.python",
+                "github.copilot",
+                "twxs.cmake",
+                "github.vscode-pull-request-github",
+                "llvm-vs-code-extensions.vscode-clangd",
+                "liangqin.quick-notes",
+                "ritwickdey.liveserver",
+                "bierner.markdown-checkbox",
+                "yzhang.markdown-all-in-one",
+                "ms-toolsai.jupyter",
+                "natizyskunk.sftp",
+                "streetsidesoftware.code-spell-checker",
+                "ms-python.autopep8",
+                "ms-azuretools.vscode-docker",
+                "formulahendry.code-runner",
+                "saoudrizwan.claude-dev",
+                "leetcode.vscode-leetcode",
+                "bierner.markdown-preview-github-styles",
+                "bierner.markdown-mermaid",
+                "Kelvin.vscode-sshfs",
+                "moonshot-ai.kimi-code",
+                "openai.chatgpt",
+                "anthropic.claude-code",
+                "OrenMaoz.markco",
+                "sankethdev.vscode-proto",
+                "BazelBuild.vscode-bazel",
+                "bufbuild.vscode-buf",
+                "dionmunk.vscode-notes",
+                "felipecaputo.git-project-manager",
+                "Gruntfuggly.vscode-journal-view",
+                "pajoma.vscode-journal",
+                "holooooo.markdown-kanban"
+            ]
+        }
+    },
+    "shutdownAction": "none",
+    "postStartCommand": "/usr/local/bin/start-claude-proxy.sh || true",
+    "postCreateCommand": [
+        // "pip3 install --upgrade pip"
+        // "pip3 install numpy fabric2 psutil pandas toml distro",
+        // "pip3 install numpy faker gprof2dot tzlocal matplotlib",
+        // "pip3 install ipykernel taos-ws-py taospy baostock tushare"
+    ],
+    "remoteUser": "hzcheng"
+}

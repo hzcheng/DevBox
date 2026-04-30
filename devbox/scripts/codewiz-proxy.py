@@ -27,11 +27,16 @@ import uuid
 from datetime import datetime
 
 # ── 配置 ──
-TARGET_BASE_URL = os.environ.get(
-    "CODEWIZ_TARGET_URL",
-    "https://codewiz.devops.xiaohongshu.com/llmadapter/v3/claude",
-)
+_DEFAULT_TARGET_URL = "https://codewiz.devops.xiaohongshu.com/llmadapter/v3/claude"
+
+TARGET_BASE_URL = os.environ.get("CODEWIZ_TARGET_URL", _DEFAULT_TARGET_URL)
 PORT = int(os.environ.get("CODEWIZ_PROXY_PORT", "8089"))
+
+# provider → adapter-source 映射（后端 URL 相同，仅 adapter-source 不同）
+PROVIDERS = {
+    "codewiz":  "codewiz-cli",
+    "openclaw": "openclaw",
+}
 
 CODEWIZ_VERSION = "0.1.37"
 
@@ -71,6 +76,8 @@ ALLOWED_BETA_PREFIXES = (
 VERBOSE = False
 LOG_FILE = None
 ADAPTER_SOURCE = "codewiz-cli"
+CURRENT_PROVIDER = "codewiz"
+_PROVIDER_LOCK = threading.Lock()
 _SSL_CTX = ssl.create_default_context()
 
 # ── 凭据（启动时填充） ──
@@ -527,10 +534,57 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+
+        if self.path.startswith("/admin/switch"):
+            self._handle_switch()
+            return
+
+        if self.path == "/admin/status":
+            self._handle_status()
+            return
+
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
-        self.wfile.write(json.dumps({"status": "ok", "proxy": "codewiz"}).encode())
+        self.wfile.write(json.dumps({"status": "ok", "proxy": CURRENT_PROVIDER}).encode())
+
+    def _handle_switch(self):
+        global ADAPTER_SOURCE, CURRENT_PROVIDER
+        from urllib.parse import urlparse, parse_qs
+        qs = parse_qs(urlparse(self.path).query)
+        provider = qs.get("provider", [None])[0]
+        if provider not in PROVIDERS:
+            body = json.dumps({
+                "error": f"unknown provider '{provider}', available: {list(PROVIDERS)}"
+            }).encode()
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        with _PROVIDER_LOCK:
+            CURRENT_PROVIDER = provider
+            ADAPTER_SOURCE = PROVIDERS[provider]
+        log(f"[admin] switched provider -> {provider} (adapter-source: {ADAPTER_SOURCE})")
+        body = json.dumps({"provider": CURRENT_PROVIDER, "adapter_source": ADAPTER_SOURCE}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _handle_status(self):
+        body = json.dumps({
+            "provider": CURRENT_PROVIDER,
+            "adapter_source": ADAPTER_SOURCE,
+            "target_url": TARGET_BASE_URL,
+        }).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def do_HEAD(self):
         self.send_response(200)

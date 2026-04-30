@@ -294,11 +294,11 @@ COPY devbox/tmux.conf /etc/tmux.conf
 RUN sed -i 's/\r$//' /etc/tmux.conf
 
 # Global prompt: git branch + newline before $
-COPY devbox/devbox-prompt.sh /etc/profile.d/devbox-prompt.sh
+COPY devbox/scripts/devbox-prompt.sh /etc/profile.d/devbox-prompt.sh
 RUN sed -i 's/\r$//' /etc/profile.d/devbox-prompt.sh && chmod 644 /etc/profile.d/devbox-prompt.sh
 
 # Package startup script
-COPY devbox/start-services.sh /usr/local/bin/start-services.sh
+COPY devbox/scripts/start-services.sh /usr/local/bin/start-services.sh
 RUN sed -i 's/\r$//' /usr/local/bin/start-services.sh && chmod +x /usr/local/bin/start-services.sh
 
 # Create non-root dev user if DEV_USER != root.
@@ -398,14 +398,17 @@ RUN PROTOC_ARCH="${TARGETARCH_OVERRIDE:-${TARGETARCH}}" && \
 # Install codewiz proxy for transparent Claude Code access.
 # Skip if ANTHROPIC_API_KEY is a real key; otherwise requires CODEWIZ_SESSION_TOKEN
 # env var or ~/.local/share/codewiz/auth.json (persisted via /root volume).
-COPY devbox/codewiz-proxy.py /usr/local/lib/codewiz-proxy.py
-COPY devbox/start-claude-proxy.sh /usr/local/bin/start-claude-proxy.sh
-COPY devbox/claude-proxy-wrapper.sh /usr/local/bin/claude-proxy-wrapper.sh
+COPY devbox/scripts/codewiz-proxy.py /usr/local/lib/codewiz-proxy.py
+COPY devbox/scripts/start-claude-proxy.sh /usr/local/bin/start-claude-proxy.sh
+COPY devbox/scripts/claude-proxy-wrapper.sh /usr/local/bin/claude-proxy-wrapper.sh
+COPY devbox/scripts/claude-use.sh /usr/local/bin/claude-use
 RUN sed -i 's/\r$//' /usr/local/lib/codewiz-proxy.py \
     && sed -i 's/\r$//' /usr/local/bin/start-claude-proxy.sh \
     && sed -i 's/\r$//' /usr/local/bin/claude-proxy-wrapper.sh \
+    && sed -i 's/\r$//' /usr/local/bin/claude-use \
     && chmod +x /usr/local/bin/start-claude-proxy.sh \
     && chmod +x /usr/local/bin/claude-proxy-wrapper.sh \
+    && chmod +x /usr/local/bin/claude-use \
     && CLAUDE_SYMLINK="$(which claude)" \
     && CLAUDE_REAL="$(readlink -f "$CLAUDE_SYMLINK")" \
     && ln -sf "$CLAUDE_REAL" /usr/local/bin/claude.real \
