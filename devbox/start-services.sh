@@ -110,15 +110,25 @@ setup_dev_user() {
 
     # Add dev user to the docker group using the host socket's actual GID.
     # The GID is host-specific and unknown at image build time, so we handle it here.
-    # Docker is set as the primary group (not just supplementary) because Node.js child
-    # processes drop supplementary groups on fork, which would break docker socket access
-    # inside VS Code terminals.
+    # We add docker as a supplementary group AND inject a newgrp call into ~/.bashrc so
+    # that every new terminal (including VS Code integrated terminals, which are forked
+    # from a process that predates this setup) automatically re-enters the docker group.
     local docker_gid
     docker_gid=$(stat -c '%g' /var/run/docker.sock 2>/dev/null || true)
     if [ -n "${docker_gid}" ] && [ "${docker_gid}" != "0" ]; then
         groupadd --gid "${docker_gid}" docker 2>/dev/null || true
-        usermod -g docker "${DEV_USER}" 2>/dev/null || true
-        log_info "Set docker (gid=${docker_gid}) as primary group for ${DEV_USER}"
+        usermod -aG docker "${DEV_USER}" 2>/dev/null || true
+        log_info "Added ${DEV_USER} to docker group (gid=${docker_gid})"
+
+        # Inject newgrp into ~/.bashrc so every new terminal picks up the docker group.
+        # Without this, VS Code terminals inherit the process groups from vscode-server,
+        # which was started before setup_dev_user ran and does not have docker in its groups.
+        local bashrc="${DEV_HOME}/.bashrc"
+        if [ -f "${bashrc}" ] && ! grep -q 'newgrp docker' "${bashrc}"; then
+            printf '\n# Re-enter docker group so VS Code terminals can access /var/run/docker.sock\nif ! id -nG 2>/dev/null | grep -qw docker; then exec newgrp docker; fi\n' >> "${bashrc}"
+            chown "${DEV_USER}:${DEV_USER}" "${bashrc}"
+            log_info "Injected newgrp docker into ${bashrc}"
+        fi
     fi
 }
 

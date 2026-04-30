@@ -229,17 +229,15 @@ RUN if [ "${USE_CN_MIRROR}" = "true" ]; then \
     go env -w GONOSUMDB=code.devops.xiaohongshu.com && \
     go env -w GOPRIVATE=code.devops.xiaohongshu.com
 
-# Install kimi code into a global location so non-root users can access it.
-# UV_TOOL_DIR / UV_TOOL_BIN_DIR redirect uv's tool install away from ~/root/.local.
+# Install uv via pip (pip already has CN mirror configured above), then use uv to install kimi-cli.
+# UV_PYTHON_INSTALL_DIR must be world-readable so non-root users can execute the interpreter.
 ENV UV_TOOL_DIR=/usr/local/share/uv-tools
 ENV UV_TOOL_BIN_DIR=/usr/local/bin
-RUN if [ "${USE_CN_MIRROR}" = "true" ]; then \
-        curl -fsSL --connect-timeout 10 --max-time 60 --retry 2 \
-          "https://ghp.ci/https://code.kimi.com/install.sh" | bash || \
-        curl -fsSL https://code.kimi.com/install.sh | bash; \
-    else \
-        curl -fsSL https://code.kimi.com/install.sh | bash; \
-    fi
+ENV UV_PYTHON_INSTALL_DIR=/usr/local/share/uv-python
+RUN pip3 install uv && \
+    uv tool install --python 3.13 kimi-cli && \
+    chmod -R a+rx /usr/local/share/uv-tools /usr/local/share/uv-python && \
+    kimi --version
 
 # =============================================================================
 # Stage 2: Final image with SSH and code-server
