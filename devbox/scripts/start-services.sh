@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -e
+set -eo pipefail
 
 # Dev user configuration (passed via environment from docker-compose)
 DEV_USER="${DEV_USER:-root}"
@@ -16,6 +16,7 @@ else
 fi
 
 CODE_SERVER_PID=""
+CODE_SERVER_PIDFILE="/var/run/code-server.pid"
 
 # ============================================
 # 日志工具函数
@@ -285,17 +286,22 @@ start_code_server() {
 
     if [ "${DEV_USER}" != "root" ]; then
         # Use login shell (su -) so code-server and its spawned terminals run under
-        # a complete hzcheng session (correct USER, HOME, groups, PATH).
+        # a complete session (correct USER, HOME, groups, PATH).
         # Prepend .local/bin via env so pip-installed CLIs are available.
         su - "${DEV_USER}" -c "PATH='${DEV_HOME}/.local/bin:\$PATH' /usr/bin/code-server --config '${config}' '${workdir}'" &
     else
         /usr/bin/code-server --config "${config}" "${workdir}" &
     fi
     CODE_SERVER_PID=$!
+    echo "${CODE_SERVER_PID}" > "${CODE_SERVER_PIDFILE}"
     log_info "code-server started (PID: ${CODE_SERVER_PID})"
 }
 
 stop_code_server() {
+    # Read PID from file if the in-memory variable is stale (e.g. called from a subshell)
+    if [ -z "${CODE_SERVER_PID}" ] && [ -f "${CODE_SERVER_PIDFILE}" ]; then
+        CODE_SERVER_PID="$(cat "${CODE_SERVER_PIDFILE}")"
+    fi
     if [ -z "${CODE_SERVER_PID}" ] || ! kill -0 "${CODE_SERVER_PID}" 2>/dev/null; then
         return 0
     fi
@@ -304,6 +310,7 @@ stop_code_server() {
     kill "${CODE_SERVER_PID}" 2>/dev/null || true
     wait "${CODE_SERVER_PID}" 2>/dev/null || true
     CODE_SERVER_PID=""
+    rm -f "${CODE_SERVER_PIDFILE}"
 }
 
 restart_code_server() {
@@ -713,17 +720,18 @@ install_extensions_async() {
 # Claude + Codex Proxy 启动（共用同一个 proxy，端口 8089）
 # ============================================
 setup_claude_proxy() {
-    local proxy_cmd
     if [ "${DEV_USER}" != "root" ]; then
         # Run as dev user so HOME resolves to DEV_HOME (where codewiz auth.json lives)
-        proxy_cmd="HOME=${DEV_HOME} gosu ${DEV_USER} /usr/local/bin/start-claude-proxy.sh"
+        HOME="${DEV_HOME}" gosu "${DEV_USER}" /usr/local/bin/start-claude-proxy.sh \
+            2>&1 | while IFS= read -r line; do log_info "${line}"; done || true
     else
-        proxy_cmd="/usr/local/bin/start-claude-proxy.sh"
+        /usr/local/bin/start-claude-proxy.sh \
+            2>&1 | while IFS= read -r line; do log_info "${line}"; done || true
     fi
-    eval "${proxy_cmd}" 2>&1 | while IFS= read -r line; do log_info "${line}"; done || true
     if curl -sf --max-time 2 "http://127.0.0.1:8089" >/dev/null 2>&1; then
         export ANTHROPIC_BASE_URL="http://127.0.0.1:8089"
         export ANTHROPIC_API_KEY="dummy"
+        export ANTHROPIC_AUTH_TOKEN="${ANTHROPIC_AUTH_TOKEN:-dummy}"
         # Codex shares the same proxy; it handles OpenAI API format on the same port
         export OPENAI_BASE_URL="http://127.0.0.1:8089"
         export OPENAI_API_KEY="dummy"
@@ -747,31 +755,27 @@ main() {
     # 2. 配置 Git
     setup_git
 
-    # 3. 确保 code-server 已安装
-    ensure_code_server_installed
-
-    # 4. 配置 code-server
+    # 3. 配置 code-server（不依赖已安装）
     setup_code_server_config
 
-    # 5. 启动 claude proxy（在 code-server 之前，使 code-server 继承环境变量）
+    # 4. 启动 claude proxy（在 code-server 之前，使 code-server 继承环境变量）
     setup_claude_proxy
 
-    # 6. 启动 code-server（后台）
-    start_code_server
-
-    # 7. 启动自动更新循环（后台）
-    if is_code_server_auto_update_enabled; then
-        code_server_update_loop &
-        local auto_update_pid=$!
-        log_info "code-server auto-update loop running in background (PID: ${auto_update_pid})"
-    else
-        log_info "code-server auto-update loop disabled"
-    fi
-
-    # 8. 在后台异步安装插件（避免阻碍服务访问）
-    install_extensions_async &
-    local install_pid=$!
-    log_info "Extension installation running in background (PID: ${install_pid})"
+    # 5. 在后台安装/更新 code-server，装好后立即启动，装完再开自动更新和插件安装
+    # 注意：start_code_server 设置的 CODE_SERVER_PID 在子 shell 中无法传回主进程，
+    # stop/restart_code_server 仅在子 shell 内（如 check_and_update_code_server）有效。
+    {
+        if ensure_code_server_installed; then
+            start_code_server
+            if is_code_server_auto_update_enabled; then
+                code_server_update_loop &
+            fi
+            install_extensions_async
+        else
+            log_error "code-server installation failed; skipping start"
+        fi
+    } &
+    log_info "code-server install/start running in background"
 
     log_info "=========================================="
     log_info "All services started successfully!"

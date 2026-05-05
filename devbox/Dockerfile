@@ -254,40 +254,11 @@ ARG HTTPS_PROXY
 ARG ALL_PROXY
 ARG TARGETARCH
 ARG TARGETARCH_OVERRIDE
-ARG CODE_SERVER_VERSION=latest
-ARG CODE_SERVER_RELEASE_BASE_URL=https://github.com/coder/code-server/releases/download
-
 # Install SSH server and gosu (for clean user-switching in entrypoint)
 RUN apt-get install -y --no-install-recommends openssh-server gosu && \
     sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
     sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
     echo 'root:root' | chpasswd
-
-# Install the latest code-server by default while still allowing explicit pinning.
-RUN apt-get update && \
-    RESOLVED_CODE_SERVER_VERSION="${CODE_SERVER_VERSION}" && \
-    CODE_SERVER_ARCH="${TARGETARCH_OVERRIDE:-${TARGETARCH}}" && \
-    if [ -z "${CODE_SERVER_ARCH}" ]; then CODE_SERVER_ARCH="$(dpkg --print-architecture)"; fi && \
-    case "${CODE_SERVER_ARCH}" in \
-      x86_64) CODE_SERVER_ARCH="amd64" ;; \
-      amd64|arm64) ;; \
-      *) echo "Unsupported code-server architecture: ${CODE_SERVER_ARCH}" >&2; exit 1 ;; \
-    esac && \
-    if [ -z "${RESOLVED_CODE_SERVER_VERSION}" ] || [ "${RESOLVED_CODE_SERVER_VERSION}" = "latest" ]; then \
-      LATEST_RELEASE_URL="$(curl -fsSLI --connect-timeout 10 --max-time 30 --retry 5 --retry-delay 2 --retry-all-errors -o /dev/null -w '%{url_effective}' https://github.com/coder/code-server/releases/latest)" && \
-      RESOLVED_CODE_SERVER_VERSION="${LATEST_RELEASE_URL##*/}" && \
-      RESOLVED_CODE_SERVER_VERSION="${RESOLVED_CODE_SERVER_VERSION#v}" && \
-      test -n "${RESOLVED_CODE_SERVER_VERSION}"; \
-    fi && \
-    CODE_SERVER_DEB="/tmp/code-server_${RESOLVED_CODE_SERVER_VERSION}_${CODE_SERVER_ARCH}.deb" && \
-    echo "Installing code-server v${RESOLVED_CODE_SERVER_VERSION}" && \
-    curl -fsSL --connect-timeout 20 --max-time 300 --retry 5 --retry-delay 2 --retry-all-errors \
-      "${CODE_SERVER_RELEASE_BASE_URL}/v${RESOLVED_CODE_SERVER_VERSION}/code-server_${RESOLVED_CODE_SERVER_VERSION}_${CODE_SERVER_ARCH}.deb" \
-      -o "${CODE_SERVER_DEB}" && \
-    dpkg -i "${CODE_SERVER_DEB}" && \
-    rm -f "${CODE_SERVER_DEB}" && \
-    # Verify installation
-    which code-server && code-server --version
 
 # Install tmux.conf to a global path so both root and non-root users can symlink it
 COPY devbox/tmux.conf /etc/tmux.conf

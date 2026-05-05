@@ -83,4 +83,4 @@ if [[ -z "${ANTHROPIC_API_KEY:-}" || "${ANTHROPIC_API_KEY}" == "dummy" ]]; then
     fi
 fi
 
-exec node /usr/local/bin/claude.real "$@"
+exec /usr/local/bin/claude.real "$@"
