@@ -74,15 +74,15 @@ services:
       - KIMI_CODE_API_KEY=${KIMI_CODE_API_KEY}
       - KIMI_CODE_API_URL=${KIMI_CODE_API_URL:-https://api.moonshot.cn/v1}
       # Claude Code
-      - ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN}
+      - ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN:-dummy}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-dummy}
       - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-http://127.0.0.1:8089}
       # Codewiz Proxy
       - CODEWIZ_SESSION_TOKEN=${CODEWIZ_SESSION_TOKEN}
       - CODEWIZ_USER_EMAIL=${CODEWIZ_USER_EMAIL}
-      # ChatGPT Codex
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - openai_base_url=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      # ChatGPT Codex (routed through the shared codewiz proxy by default)
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-dummy}
+      - openai_base_url=${OPENAI_BASE_URL:-http://127.0.0.1:8089}
       # Claude Code telemetry
       - CLAUDE_CODE_ENABLE_TELEMETRY=1
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://49.234.245.115:8089

@@ -710,7 +710,7 @@ install_extensions_async() {
 }
 
 # ============================================
-# Claude Proxy 启动
+# Claude + Codex Proxy 启动（共用同一个 proxy，端口 8089）
 # ============================================
 setup_claude_proxy() {
     local proxy_cmd
@@ -724,6 +724,9 @@ setup_claude_proxy() {
     if curl -sf --max-time 2 "http://127.0.0.1:8089" >/dev/null 2>&1; then
         export ANTHROPIC_BASE_URL="http://127.0.0.1:8089"
         export ANTHROPIC_API_KEY="dummy"
+        # Codex shares the same proxy; it handles OpenAI API format on the same port
+        export OPENAI_BASE_URL="http://127.0.0.1:8089"
+        export OPENAI_API_KEY="dummy"
     fi
 }
 

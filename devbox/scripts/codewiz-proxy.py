@@ -1,13 +1,14 @@
 """
-proxy.py — CodeWiz LLM Proxy for Claude Code
+proxy.py — CodeWiz LLM Proxy for Claude Code & Codex
 
 凭据优先级:
   1. 环境变量 CODEWIZ_SESSION_TOKEN / CODEWIZ_USER_EMAIL
   2. 自动检测 ~/.local/share/codewiz/auth.json
 
 可选环境变量:
-  CODEWIZ_TARGET_URL   - 后端地址（默认: https://codewiz.devops.xiaohongshu.com/llmadapter/v3/claude）
-  CODEWIZ_PROXY_PORT   - 监听端口（默认: 8089）
+  CODEWIZ_TARGET_URL        - Claude 后端（默认: https://codewiz.devops.xiaohongshu.com/llmadapter/v3/claude）
+  CODEWIZ_OPENAI_TARGET_URL - OpenAI 后端（默认: https://codewiz.devops.xiaohongshu.com/llmratelimit/v3/openai/v1）
+  CODEWIZ_PROXY_PORT        - 监听端口（默认: 8089）
 """
 
 import argparse
@@ -27,16 +28,15 @@ import uuid
 from datetime import datetime
 
 # ── 配置 ──
-_DEFAULT_TARGET_URL = "https://codewiz.devops.xiaohongshu.com/llmadapter/v3/claude"
-
-TARGET_BASE_URL = os.environ.get("CODEWIZ_TARGET_URL", _DEFAULT_TARGET_URL)
+TARGET_BASE_URL = os.environ.get(
+    "CODEWIZ_TARGET_URL",
+    "https://codewiz.devops.xiaohongshu.com/llmadapter/v3/claude",
+)
+OPENAI_TARGET_BASE_URL = os.environ.get(
+    "CODEWIZ_OPENAI_TARGET_URL",
+    "https://codewiz.devops.xiaohongshu.com/llmratelimit/v3/openai/v1",
+)
 PORT = int(os.environ.get("CODEWIZ_PROXY_PORT", "8089"))
-
-# provider → adapter-source 映射（后端 URL 相同，仅 adapter-source 不同）
-PROVIDERS = {
-    "codewiz":  "codewiz-cli",
-    "openclaw": "openclaw",
-}
 
 CODEWIZ_VERSION = "0.1.37"
 
@@ -76,8 +76,6 @@ ALLOWED_BETA_PREFIXES = (
 VERBOSE = False
 LOG_FILE = None
 ADAPTER_SOURCE = "codewiz-cli"
-CURRENT_PROVIDER = "codewiz"
-_PROVIDER_LOCK = threading.Lock()
 _SSL_CTX = ssl.create_default_context()
 
 # ── 凭据（启动时填充） ──
@@ -409,12 +407,21 @@ def fire_fake_session(model_id, session_id, conversation_id,
 # ── 请求处理 ──
 class ProxyHandler(http.server.BaseHTTPRequestHandler):
 
+    def _is_openai_path(self):
+        # codex wire_api=responses 发 /responses
+        # codex wire_api=chat 发 /v1/chat/completions
+        return self.path.startswith("/responses") or self.path.startswith("/v1/chat")
+
     def do_POST(self):
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length)
 
         log("=" * 50)
         log(f"{self.command} {self.path}")
+
+        if self._is_openai_path():
+            self._do_openai_post(body)
+            return
 
         body, body_json, extra_headers, rewrite_logs, model_id = rewrite_body(body)
         for info in rewrite_logs:
@@ -462,6 +469,38 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         should_report = bool(model_id and n % 3 == 0)
 
         self._forward(req, body_json, model_id, n, session_id, conversation_id, should_report)
+
+    def _do_openai_post(self, body):
+        """转发 OpenAI 格式请求（Codex CLI 使用）到内部 OpenAI endpoint"""
+        try:
+            body_json = json.loads(body)
+        except (json.JSONDecodeError, ValueError):
+            body_json = {}
+
+        model = body_json.get("model", "N/A")
+        log(f"  [openai] model: {model}  path: {self.path}")
+        if VERBOSE:
+            log(json.dumps(body_json, indent=2, ensure_ascii=False))
+
+        target_url = OPENAI_TARGET_BASE_URL + self.path
+        req = urllib.request.Request(target_url, data=body, method="POST")
+
+        skip_headers = {"host", "content-length", "transfer-encoding", "connection",
+                        "authorization"}
+        for key, value in self.headers.items():
+            if key.lower() in skip_headers:
+                continue
+            req.add_header(key, value)
+
+        req.add_header("Cookie", f"{SSO_TOKEN_KEY}={SESSION_TOKEN}")
+        req.add_header(SSO_TOKEN_KEY, SESSION_TOKEN)
+        req.add_header("x-adapter-source", ADAPTER_SOURCE)
+        req.add_header("x-adapter-email", USER_EMAIL)
+        req.add_header("X-Adapter-User-Email", USER_EMAIL)
+        req.add_header("x-adapter-scenario", "codewiz-opencode-cli")
+
+        n = SESSION.bump()
+        self._forward(req, body_json, model, n, *SESSION.snapshot(), False)
 
     def _forward(self, req, body_json, model_id, n, session_id, conversation_id, should_report):
         ctx = _SSL_CTX
@@ -534,57 +573,10 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
-
-        if self.path.startswith("/admin/switch"):
-            self._handle_switch()
-            return
-
-        if self.path == "/admin/status":
-            self._handle_status()
-            return
-
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
-        self.wfile.write(json.dumps({"status": "ok", "proxy": CURRENT_PROVIDER}).encode())
-
-    def _handle_switch(self):
-        global ADAPTER_SOURCE, CURRENT_PROVIDER
-        from urllib.parse import urlparse, parse_qs
-        qs = parse_qs(urlparse(self.path).query)
-        provider = qs.get("provider", [None])[0]
-        if provider not in PROVIDERS:
-            body = json.dumps({
-                "error": f"unknown provider '{provider}', available: {list(PROVIDERS)}"
-            }).encode()
-            self.send_response(400)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-            return
-        with _PROVIDER_LOCK:
-            CURRENT_PROVIDER = provider
-            ADAPTER_SOURCE = PROVIDERS[provider]
-        log(f"[admin] switched provider -> {provider} (adapter-source: {ADAPTER_SOURCE})")
-        body = json.dumps({"provider": CURRENT_PROVIDER, "adapter_source": ADAPTER_SOURCE}).encode()
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def _handle_status(self):
-        body = json.dumps({
-            "provider": CURRENT_PROVIDER,
-            "adapter_source": ADAPTER_SOURCE,
-            "target_url": TARGET_BASE_URL,
-        }).encode()
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        self.wfile.write(json.dumps({"status": "ok", "proxy": "codewiz"}).encode())
 
     def do_HEAD(self):
         self.send_response(200)

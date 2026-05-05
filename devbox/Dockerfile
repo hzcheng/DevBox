@@ -395,24 +395,34 @@ RUN PROTOC_ARCH="${TARGETARCH_OVERRIDE:-${TARGETARCH}}" && \
     rm -f "/tmp/${PROTOC_ZIP}" && \
     protoc --version
 
-# Install codewiz proxy for transparent Claude Code access.
-# Skip if ANTHROPIC_API_KEY is a real key; otherwise requires CODEWIZ_SESSION_TOKEN
+# Install codewiz proxy for transparent Claude Code and Codex access.
+# A single proxy on port 8089 handles both Anthropic and OpenAI API formats.
+# Skip if the respective API key is a real key; otherwise requires CODEWIZ_SESSION_TOKEN
 # env var or ~/.local/share/codewiz/auth.json (persisted via /root volume).
 COPY devbox/scripts/codewiz-proxy.py /usr/local/lib/codewiz-proxy.py
 COPY devbox/scripts/start-claude-proxy.sh /usr/local/bin/start-claude-proxy.sh
 COPY devbox/scripts/claude-proxy-wrapper.sh /usr/local/bin/claude-proxy-wrapper.sh
+COPY devbox/scripts/codex-proxy-wrapper.sh /usr/local/bin/codex-proxy-wrapper.sh
 COPY devbox/scripts/claude-use.sh /usr/local/bin/claude-use
 RUN sed -i 's/\r$//' /usr/local/lib/codewiz-proxy.py \
     && sed -i 's/\r$//' /usr/local/bin/start-claude-proxy.sh \
     && sed -i 's/\r$//' /usr/local/bin/claude-proxy-wrapper.sh \
+    && sed -i 's/\r$//' /usr/local/bin/codex-proxy-wrapper.sh \
     && sed -i 's/\r$//' /usr/local/bin/claude-use \
     && chmod +x /usr/local/bin/start-claude-proxy.sh \
     && chmod +x /usr/local/bin/claude-proxy-wrapper.sh \
+    && chmod +x /usr/local/bin/codex-proxy-wrapper.sh \
     && chmod +x /usr/local/bin/claude-use \
     && CLAUDE_SYMLINK="$(which claude)" \
     && CLAUDE_REAL="$(readlink -f "$CLAUDE_SYMLINK")" \
     && ln -sf "$CLAUDE_REAL" /usr/local/bin/claude.real \
     && rm -f "$CLAUDE_SYMLINK" \
     && cp /usr/local/bin/claude-proxy-wrapper.sh "$CLAUDE_SYMLINK" \
-    && chmod +x "$CLAUDE_SYMLINK"
+    && chmod +x "$CLAUDE_SYMLINK" \
+    && CODEX_SYMLINK="$(which codex)" \
+    && CODEX_REAL="$(readlink -f "$CODEX_SYMLINK")" \
+    && ln -sf "$CODEX_REAL" /usr/local/bin/codex.real \
+    && rm -f "$CODEX_SYMLINK" \
+    && cp /usr/local/bin/codex-proxy-wrapper.sh "$CODEX_SYMLINK" \
+    && chmod +x "$CODEX_SYMLINK"
 
