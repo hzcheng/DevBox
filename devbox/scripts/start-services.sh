@@ -249,7 +249,7 @@ ensure_code_server_installed() {
     download_url="${CODE_SERVER_RELEASE_BASE_URL:-https://github.com/coder/code-server/releases/download}/v${resolved_version}/code-server_${resolved_version}_${package_arch}.deb"
     
     log_info "Installing code-server ${resolved_version}..."
-    curl -fsSL --connect-timeout 20 --max-time 300 --retry 5 --retry-delay 2 --retry-all-errors \
+    curl -fL --connect-timeout 20 --max-time 3600 --retry 10 --retry-delay 5 --retry-all-errors -C - \
         "${download_url}" \
         -o "${deb_path}"
     dpkg -i "${deb_path}"
