@@ -51,6 +51,11 @@ KIMI_USER_AGENT = "KimiCLI/1.37.0"
 KIMI_CREDENTIALS_PATH = os.path.join(os.environ.get("HOME", "/root"), ".kimi", "credentials", "kimi-code.json")
 KIMI_OAUTH_TOKEN_URL = "https://auth.kimi.com/api/oauth/token"
 
+DEEPSEEK_ANTHROPIC_BASE_URL = os.environ.get("DEEPSEEK_API_URL") or "https://api.deepseek.com/anthropic"
+DEEPSEEK_OPENAI_BASE_URL = "https://api.deepseek.com"
+DEEPSEEK_MODEL = "deepseek-v4-pro"
+DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
+
 CODEWIZ_VERSION = "0.1.37"
 
 METRICS_API = "http://codewiz.devops.xiaohongshu.com/complete/metrics/v1"
@@ -638,12 +643,18 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         if self._is_openai_path():
             if provider == "kimi":
                 self._do_kimi_openai_post(body)
+            elif provider == "deepseek":
+                self._do_deepseek_openai_post(body)
             else:
                 self._do_openai_post(body)
             return
 
         if provider == "kimi":
             self._do_kimi_post(body)
+            return
+
+        if provider == "deepseek":
+            self._do_deepseek_post(body)
             return
 
         body, body_json, extra_headers, rewrite_logs, model_id = rewrite_body(body)
@@ -747,6 +758,98 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
 
         n = SESSION.bump()
         self._forward(req, body_json, KIMI_MODEL, n, *SESSION.snapshot(), False)
+
+    def _do_deepseek_post(self, body):
+        """转发 Anthropic 格式请求到 DeepSeek Anthropic 兼容端点"""
+        if not DEEPSEEK_API_KEY:
+            self.send_response(503)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "DEEPSEEK_API_KEY 未设置"}).encode())
+            return
+
+        body, body_json, _extra, rewrite_logs, _ = rewrite_body(body)
+        for info in rewrite_logs:
+            log(f"  [deepseek/rewrite] {info}")
+
+        original_model = body_json.get("model", "")
+        if original_model != DEEPSEEK_MODEL:
+            body_json["model"] = DEEPSEEK_MODEL
+            log(f"  [deepseek] model: {original_model} -> {DEEPSEEK_MODEL}")
+            body = json.dumps(body_json).encode("utf-8")
+
+        log(f"  [deepseek] stream: {body_json.get('stream', 'N/A')}  "
+            f"messages: {len(body_json.get('messages', []))} 条")
+
+        target_url = DEEPSEEK_ANTHROPIC_BASE_URL + self.path
+        req = urllib.request.Request(target_url, data=body, method="POST")
+
+        skip_headers = {"host", "content-length", "transfer-encoding", "connection",
+                        "authorization", "x-api-key"}
+        for key, value in self.headers.items():
+            if key.lower() in skip_headers:
+                continue
+            if key.lower() == "anthropic-beta":
+                filtered = filter_beta_header(value)
+                if filtered:
+                    req.add_header(key, filtered)
+                continue
+            req.add_header(key, value)
+
+        req.add_header("Authorization", f"Bearer {DEEPSEEK_API_KEY}")
+
+        n = SESSION.bump()
+        self._forward(req, body_json, DEEPSEEK_MODEL, n, *SESSION.snapshot(), False)
+
+    def _do_deepseek_openai_post(self, body):
+        """转发 OpenAI 格式请求（Codex CLI 使用）到 DeepSeek OpenAI 端点。
+        /responses 格式会被转换成 /v1/chat/completions 格式。
+        """
+        if not DEEPSEEK_API_KEY:
+            self.send_response(503)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "DEEPSEEK_API_KEY 未设置"}).encode())
+            return
+
+        try:
+            body_json = json.loads(body)
+        except (json.JSONDecodeError, ValueError):
+            body_json = {}
+
+        is_responses = self.path.startswith("/responses")
+        if is_responses:
+            body_json = _convert_responses_to_chat(body_json)
+            target_path = "/v1/chat/completions"
+        else:
+            target_path = self.path
+
+        original_model = body_json.get("model", "")
+        if original_model != DEEPSEEK_MODEL:
+            body_json["model"] = DEEPSEEK_MODEL
+            log(f"  [deepseek/openai] model: {original_model} -> {DEEPSEEK_MODEL}")
+
+        body = json.dumps(body_json).encode("utf-8")
+        log(f"  [deepseek/openai] path: {target_path}  stream: {body_json.get('stream', 'N/A')}  "
+            f"messages: {len(body_json.get('messages', []))} 条")
+
+        target_url = DEEPSEEK_OPENAI_BASE_URL + target_path
+        req = urllib.request.Request(target_url, data=body, method="POST")
+
+        skip_headers = {"host", "content-length", "transfer-encoding", "connection",
+                        "authorization", "x-anthropic-billing-header"}
+        for key, value in self.headers.items():
+            if key.lower() in skip_headers:
+                continue
+            req.add_header(key, value)
+
+        req.add_header("Authorization", f"Bearer {DEEPSEEK_API_KEY}")
+
+        n = SESSION.bump()
+        if is_responses:
+            self._forward_responses(req)
+        else:
+            self._forward(req, body_json, DEEPSEEK_MODEL, n, *SESSION.snapshot(), False)
 
     def _do_kimi_openai_post(self, body):
         """转发 OpenAI 格式请求（Codex CLI 使用）到 Kimi Coding API。
@@ -1095,7 +1198,7 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             from urllib.parse import urlparse, parse_qs
             qs = parse_qs(urlparse(self.path).query)
             name = (qs.get("provider") or [""])[0].strip()
-            allowed = {"codewiz", "openclaw", "kimi"}
+            allowed = {"codewiz", "openclaw", "kimi", "deepseek"}
             if name not in allowed:
                 self._json_response(
                     {"error": f"unknown provider '{name}', allowed: {sorted(allowed)}"},

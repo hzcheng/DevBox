@@ -69,7 +69,7 @@ services:
       - COPILOT_CHAT_VERSION=${COPILOT_CHAT_VERSION:-latest}
       # DeepSeek
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
-      - DEEPSEEK_API_URL=${DEEPSEEK_API_URL:-https://api.deepseek.com}
+      - DEEPSEEK_API_URL=${DEEPSEEK_API_URL:-https://api.deepseek.com/anthropic}
       # Kimi Code 2.5
       - KIMI_CODE_API_KEY=${KIMI_CODE_API_KEY}
       - KIMI_CODE_API_URL=${KIMI_CODE_API_URL:-https://api.moonshot.cn/v1}

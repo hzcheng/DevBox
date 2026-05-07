@@ -45,7 +45,10 @@ bash -c '
     echo "$$" > "${pid_file}"
     while true; do
         echo "[$(date "+%Y-%m-%d %H:%M:%S")] starting proxy..." >> "${log_file}"
-        CODEWIZ_PROXY_PORT="${port}" python3 "${py}" >> "${log_file}" 2>&1
+        CODEWIZ_PROXY_PORT="${port}" \
+        DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY:-}" \
+        DEEPSEEK_API_URL="${DEEPSEEK_API_URL:-}" \
+        python3 "${py}" >> "${log_file}" 2>&1
         echo "[$(date "+%Y-%m-%d %H:%M:%S")] proxy exited, restarting in 2s..." >> "${log_file}"
         sleep 2
     done

@@ -10,7 +10,7 @@ set -euo pipefail
 
 PROXY_PORT="${CODEWIZ_PROXY_PORT:-8089}"
 PROXY_URL="http://127.0.0.1:${PROXY_PORT}"
-AVAILABLE_PROVIDERS="codewiz, openclaw, kimi"
+AVAILABLE_PROVIDERS="codewiz, openclaw, kimi, deepseek"
 
 usage() {
     cat >&2 <<EOF
