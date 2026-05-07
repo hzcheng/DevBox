@@ -9,6 +9,12 @@ proxy.py — CodeWiz LLM Proxy for Claude Code & Codex
   CODEWIZ_TARGET_URL        - Claude 后端（默认: https://codewiz.devops.xiaohongshu.com/llmadapter/v3/claude）
   CODEWIZ_OPENAI_TARGET_URL - OpenAI 后端（默认: https://codewiz.devops.xiaohongshu.com/llmratelimit/v3/openai/v1）
   CODEWIZ_PROXY_PORT        - 监听端口（默认: 8089）
+  CODEWIZ_INITIAL_PROVIDER  - 启动时使用的 provider（codewiz | kimi，默认: codewiz）
+
+运行时切换 provider（无需重启）:
+  claude-use kimi
+  claude-use codewiz
+  claude-use status
 """
 
 import argparse
@@ -23,6 +29,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from datetime import datetime
@@ -37,6 +44,12 @@ OPENAI_TARGET_BASE_URL = os.environ.get(
     "https://codewiz.devops.xiaohongshu.com/llmratelimit/v3/openai/v1",
 )
 PORT = int(os.environ.get("CODEWIZ_PROXY_PORT", "8089"))
+
+KIMI_TARGET_BASE_URL = "https://api.kimi.com/coding"
+KIMI_MODEL = "kimi-for-coding"
+KIMI_USER_AGENT = "KimiCLI/1.37.0"
+KIMI_CREDENTIALS_PATH = os.path.join(os.environ.get("HOME", "/root"), ".kimi", "credentials", "kimi-code.json")
+KIMI_OAUTH_TOKEN_URL = "https://auth.kimi.com/api/oauth/token"
 
 CODEWIZ_VERSION = "0.1.37"
 
@@ -78,11 +91,30 @@ LOG_FILE = None
 ADAPTER_SOURCE = "codewiz-cli"
 _SSL_CTX = ssl.create_default_context()
 
+# ── Provider 状态（运行时可切换） ──
+_PROVIDER_LOCK = threading.Lock()
+_CURRENT_PROVIDER = os.environ.get("CODEWIZ_INITIAL_PROVIDER", "codewiz")
+
+def get_provider():
+    with _PROVIDER_LOCK:
+        return _CURRENT_PROVIDER
+
+def set_provider(name):
+    global _CURRENT_PROVIDER
+    with _PROVIDER_LOCK:
+        _CURRENT_PROVIDER = name
+
 # ── 凭据（启动时填充） ──
 SESSION_TOKEN = ""
 SSO_TOKEN_KEY = "common-internal-access-token-prod"
 USER_EMAIL = ""
 USER_INFO = {}
+
+# ── Kimi Token（运行时刷新） ──
+_KIMI_LOCK = threading.Lock()
+_KIMI_ACCESS_TOKEN = ""
+_KIMI_REFRESH_TOKEN = ""
+_KIMI_EXPIRES_AT = 0.0
 
 
 # ── 工具函数 ──
@@ -206,6 +238,99 @@ def extract_usage(data):
             pass
 
     return input_tokens, output_tokens, cache_read, cache_write
+
+
+# ── Kimi 凭据 ──
+def _load_kimi_credentials_from_file():
+    """从 kimi-cli 的凭据文件读取 token，返回 (access_token, refresh_token, expires_at) 或 None"""
+    try:
+        with open(KIMI_CREDENTIALS_PATH) as f:
+            data = json.load(f)
+        return data["access_token"], data["refresh_token"], float(data["expires_at"])
+    except (OSError, KeyError, ValueError):
+        return None
+
+
+def _refresh_kimi_token(refresh_token):
+    """用 refresh_token 换新的 access_token，成功返回 (access_token, refresh_token, expires_at)，失败返回 None"""
+    payload = urllib.parse.urlencode({
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+        "client_id": "17e5f671-d194-4dfb-9706-5516cb48c098",
+    }).encode()
+    try:
+        req = urllib.request.Request(KIMI_OAUTH_TOKEN_URL, data=payload, method="POST")
+        req.add_header("Content-Type", "application/x-www-form-urlencoded")
+        req.add_header("User-Agent", KIMI_USER_AGENT)
+        resp = urllib.request.urlopen(req, context=_SSL_CTX, timeout=15)
+        data = json.loads(resp.read())
+        expires_at = time.time() + float(data["expires_in"])
+        return data["access_token"], data.get("refresh_token", refresh_token), expires_at
+    except Exception as e:
+        log(f"[kimi] token 刷新失败: {e}")
+        return None
+
+
+def get_kimi_token():
+    """获取有效的 Kimi access_token，必要时自动刷新"""
+    global _KIMI_ACCESS_TOKEN, _KIMI_REFRESH_TOKEN, _KIMI_EXPIRES_AT
+    with _KIMI_LOCK:
+        # token 还有 60 秒以上有效期则直接返回
+        if _KIMI_ACCESS_TOKEN and time.time() < _KIMI_EXPIRES_AT - 60:
+            return _KIMI_ACCESS_TOKEN
+
+        # 尝试从文件重新加载（kimi-cli 可能已刷新过）
+        creds = _load_kimi_credentials_from_file()
+        if creds:
+            access, refresh, expires_at = creds
+            if time.time() < expires_at - 60:
+                _KIMI_ACCESS_TOKEN = access
+                _KIMI_REFRESH_TOKEN = refresh
+                _KIMI_EXPIRES_AT = expires_at
+                log("[kimi] 从凭据文件加载 token")
+                return _KIMI_ACCESS_TOKEN
+            # 文件里的 token 也快过期了，用 refresh_token 刷新
+            _KIMI_REFRESH_TOKEN = refresh
+
+        if not _KIMI_REFRESH_TOKEN:
+            raise RuntimeError("Kimi 未登录，请先运行 kimi-cli 完成登录")
+
+        result = _refresh_kimi_token(_KIMI_REFRESH_TOKEN)
+        if not result:
+            raise RuntimeError("Kimi token 刷新失败")
+
+        _KIMI_ACCESS_TOKEN, _KIMI_REFRESH_TOKEN, _KIMI_EXPIRES_AT = result
+        # 写回文件，保持与 kimi-cli 同步
+        try:
+            with open(KIMI_CREDENTIALS_PATH, "w") as f:
+                json.dump({
+                    "access_token": _KIMI_ACCESS_TOKEN,
+                    "refresh_token": _KIMI_REFRESH_TOKEN,
+                    "expires_at": _KIMI_EXPIRES_AT,
+                    "scope": "kimi-code",
+                    "token_type": "Bearer",
+                    "expires_in": _KIMI_EXPIRES_AT - time.time(),
+                }, f)
+            log("[kimi] token 已刷新并写回凭据文件")
+        except OSError:
+            pass
+
+        return _KIMI_ACCESS_TOKEN
+
+
+def load_kimi_credentials():
+    """启动时预加载 Kimi token（provider=kimi 时调用）"""
+    global _KIMI_ACCESS_TOKEN, _KIMI_REFRESH_TOKEN, _KIMI_EXPIRES_AT
+    creds = _load_kimi_credentials_from_file()
+    if not creds:
+        print("=" * 60)
+        print("错误: 找不到 Kimi 凭据文件")
+        print(f"  路径: {KIMI_CREDENTIALS_PATH}")
+        print("请先通过 kimi-cli 或 Kimi Code VS Code 插件登录")
+        print("=" * 60)
+        sys.exit(1)
+    _KIMI_ACCESS_TOKEN, _KIMI_REFRESH_TOKEN, _KIMI_EXPIRES_AT = creds
+    log(f"[kimi] 已加载 token，有效期至 {datetime.fromtimestamp(_KIMI_EXPIRES_AT).strftime('%H:%M:%S')}")
 
 
 # ── 凭据加载 ──
@@ -404,6 +529,95 @@ def fire_fake_session(model_id, session_id, conversation_id,
     _report_log(f"llm call completed model={model_id}", session_id)
 
 
+# ── OpenAI Responses API → Chat Completions 格式转换 ──
+def _convert_responses_to_chat(body: dict) -> dict:
+    """把 Codex 发的 /responses 格式转成 /v1/chat/completions 格式"""
+    messages = []
+
+    # instructions → system message
+    instructions = body.get("instructions")
+    if instructions:
+        messages.append({"role": "system", "content": instructions})
+
+    # input → messages
+    # 合并连续的 function_call + function_call_output 成 assistant+tool 对
+    pending_tool_calls = []  # 积累 assistant 的 function_call 条目
+    for item in body.get("input", []):
+        typ = item.get("type", "")
+
+        if typ == "function_call":
+            # assistant 发起的 tool call
+            pending_tool_calls.append({
+                "id": item.get("call_id", ""),
+                "type": "function",
+                "function": {
+                    "name": item.get("name", ""),
+                    "arguments": item.get("arguments", ""),
+                },
+            })
+            continue
+
+        if typ == "function_call_output":
+            # tool 执行结果 — 先把积累的 tool_calls flush 成 assistant 消息
+            if pending_tool_calls:
+                messages.append({"role": "assistant", "content": "", "tool_calls": pending_tool_calls})
+                pending_tool_calls = []
+            messages.append({
+                "role": "tool",
+                "tool_call_id": item.get("call_id", ""),
+                "content": str(item.get("output", "")),
+            })
+            continue
+
+        # 遇到非 tool 类型时先 flush 积累的 tool_calls
+        if pending_tool_calls:
+            messages.append({"role": "assistant", "content": "", "tool_calls": pending_tool_calls})
+            pending_tool_calls = []
+
+        if typ != "message":
+            continue
+
+        role = item.get("role", "user")
+        if role == "developer":
+            role = "user"
+        content_parts = item.get("content", [])
+        texts = []
+        for part in content_parts:
+            if isinstance(part, dict) and part.get("type") in ("input_text", "text", "output_text"):
+                texts.append(part.get("text", ""))
+            elif isinstance(part, str):
+                texts.append(part)
+        content = "\n".join(texts) if texts else ""
+        # 过滤掉空内容的 assistant 消息
+        if role == "assistant" and not content:
+            continue
+        messages.append({"role": role, "content": content})
+
+    # flush 末尾残留的 tool_calls
+    if pending_tool_calls:
+        messages.append({"role": "assistant", "content": "", "tool_calls": pending_tool_calls})
+
+    result = {
+        "model": body.get("model", KIMI_MODEL),
+        "messages": messages,
+        "stream": body.get("stream", True),
+    }
+
+    # 只透传 function 类型的 tools，过滤掉 web_search 等 kimi 不支持的类型
+    if "tools" in body:
+        valid_tools = [
+            t for t in body["tools"]
+            if t.get("type") == "function" and t.get("function", {}).get("name")
+        ]
+        if valid_tools:
+            result["tools"] = valid_tools
+
+    if "max_output_tokens" in body:
+        result["max_tokens"] = body["max_output_tokens"]
+
+    return result
+
+
 # ── 请求处理 ──
 class ProxyHandler(http.server.BaseHTTPRequestHandler):
 
@@ -419,8 +633,17 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         log("=" * 50)
         log(f"{self.command} {self.path}")
 
+        provider = get_provider()
+
         if self._is_openai_path():
-            self._do_openai_post(body)
+            if provider == "kimi":
+                self._do_kimi_openai_post(body)
+            else:
+                self._do_openai_post(body)
+            return
+
+        if provider == "kimi":
+            self._do_kimi_post(body)
             return
 
         body, body_json, extra_headers, rewrite_logs, model_id = rewrite_body(body)
@@ -470,12 +693,299 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
 
         self._forward(req, body_json, model_id, n, session_id, conversation_id, should_report)
 
+    def _do_kimi_post(self, body):
+        """转发 Anthropic 格式请求到 Kimi Coding API"""
+        try:
+            body_json = json.loads(body)
+        except (json.JSONDecodeError, ValueError):
+            body_json = {}
+
+        # 剥离不兼容字段，提取 billing header（kimi 不需要）
+        body, body_json, _extra, rewrite_logs, _ = rewrite_body(body)
+        for info in rewrite_logs:
+            log(f"  [kimi/rewrite] {info}")
+
+        # 所有 claude 模型都映射到 kimi-for-coding
+        original_model = body_json.get("model", "")
+        if original_model != KIMI_MODEL:
+            body_json["model"] = KIMI_MODEL
+            log(f"  [kimi] model: {original_model} -> {KIMI_MODEL}")
+            body = json.dumps(body_json).encode("utf-8")
+
+        log(f"  [kimi] stream: {body_json.get('stream', 'N/A')}  "
+            f"messages: {len(body_json.get('messages', []))} 条")
+        if VERBOSE:
+            log(json.dumps(body_json, indent=2, ensure_ascii=False))
+
+        try:
+            token = get_kimi_token()
+        except RuntimeError as e:
+            log(f"  [kimi] 获取 token 失败: {e}")
+            self.send_response(503)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode())
+            return
+
+        target_url = KIMI_TARGET_BASE_URL + self.path
+        req = urllib.request.Request(target_url, data=body, method="POST")
+
+        skip_headers = {"host", "content-length", "transfer-encoding", "connection",
+                        "authorization", "anthropic-version", "x-api-key"}
+        for key, value in self.headers.items():
+            if key.lower() in skip_headers:
+                continue
+            if key.lower() == "anthropic-beta":
+                filtered = filter_beta_header(value)
+                if filtered:
+                    req.add_header(key, filtered)
+                continue
+            req.add_header(key, value)
+
+        req.add_header("Authorization", f"Bearer {token}")
+        req.add_header("User-Agent", KIMI_USER_AGENT)
+
+        n = SESSION.bump()
+        self._forward(req, body_json, KIMI_MODEL, n, *SESSION.snapshot(), False)
+
+    def _do_kimi_openai_post(self, body):
+        """转发 OpenAI 格式请求（Codex CLI 使用）到 Kimi Coding API。
+        /responses 格式会被转换成 /v1/chat/completions 格式。
+        """
+        try:
+            body_json = json.loads(body)
+        except (json.JSONDecodeError, ValueError):
+            body_json = {}
+
+        # /responses 格式 → /v1/chat/completions 格式转换
+        is_responses = self.path.startswith("/responses")
+        if is_responses:
+            body_json = _convert_responses_to_chat(body_json)
+            target_path = "/v1/chat/completions"
+        else:
+            target_path = self.path
+
+        original_model = body_json.get("model", "")
+        if original_model != KIMI_MODEL:
+            body_json["model"] = KIMI_MODEL
+            log(f"  [kimi/openai] model: {original_model} -> {KIMI_MODEL}")
+
+        body = json.dumps(body_json).encode("utf-8")
+        log(f"  [kimi/openai] path: {target_path}  stream: {body_json.get('stream', 'N/A')}  "
+            f"messages: {len(body_json.get('messages', []))} 条")
+        if VERBOSE:
+            log(json.dumps(body_json, indent=2, ensure_ascii=False))
+
+        try:
+            token = get_kimi_token()
+        except RuntimeError as e:
+            log(f"  [kimi/openai] 获取 token 失败: {e}")
+            self.send_response(503)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode())
+            return
+
+        target_url = KIMI_TARGET_BASE_URL + target_path
+        req = urllib.request.Request(target_url, data=body, method="POST")
+
+        skip_headers = {"host", "content-length", "transfer-encoding", "connection",
+                        "authorization", "x-anthropic-billing-header"}
+        for key, value in self.headers.items():
+            if key.lower() in skip_headers:
+                continue
+            req.add_header(key, value)
+
+        req.add_header("Authorization", f"Bearer {token}")
+        req.add_header("User-Agent", KIMI_USER_AGENT)
+
+        n = SESSION.bump()
+        if is_responses:
+            self._forward_responses(req)
+        else:
+            self._forward(req, body_json, KIMI_MODEL, n, *SESSION.snapshot(), False)
+
+    def _forward_responses(self, req):
+        """把 kimi chat.completion.chunk SSE 流转成 OpenAI Responses API SSE 流"""
+        start_time = time.time()
+        try:
+            resp = urllib.request.urlopen(req, context=_SSL_CTX, timeout=600)
+            elapsed = time.time() - start_time
+            log(f"响应 {resp.status} ({elapsed:.1f}s) [responses转换]")
+        except urllib.error.HTTPError as e:
+            elapsed = time.time() - start_time
+            error_body = e.read()
+            log(f"错误 {e.code} ({elapsed:.1f}s): {repr(error_body[:300])}")
+            self.send_response(e.code)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(error_body)
+            return
+        except Exception as e:
+            elapsed = time.time() - start_time
+            log(f"异常 ({elapsed:.1f}s): {e}")
+            self.send_response(502)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode())
+            return
+
+        resp_id = f"resp_{uuid.uuid4().hex}"
+        created_at = int(time.time())
+        seq = 0
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+
+        def sse(event, data):
+            data["sequence_number"] = seq
+            return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n".encode()
+
+        def send(event, data):
+            nonlocal seq
+            self.wfile.write(sse(event, data))
+            self.wfile.flush()
+            seq += 1
+
+        base_resp = {
+            "id": resp_id, "object": "response", "created_at": created_at,
+            "status": "in_progress", "model": KIMI_MODEL, "output": [], "usage": None,
+        }
+        send("response.created", {"type": "response.created", "response": dict(base_resp)})
+        send("response.in_progress", {"type": "response.in_progress", "response": dict(base_resp)})
+
+        # 解析 kimi SSE 流，先收集所有 chunks 再决定是文本还是 tool call
+        full_text = []
+        tool_calls_buf = {}  # index -> {id, name, args, item_id}
+        msg_item_id = f"msg_{uuid.uuid4().hex}"
+        text_item_started = False
+
+        buf = b""
+        try:
+            for chunk in resp:
+                buf += chunk
+                while b"\n" in buf:
+                    line, buf = buf.split(b"\n", 1)
+                    line = line.strip()
+                    if not line.startswith(b"data:"):
+                        continue
+                    payload = line[5:].strip()
+                    if payload == b"[DONE]":
+                        break
+                    try:
+                        cj = json.loads(payload)
+                    except (json.JSONDecodeError, ValueError):
+                        continue
+                    choices = cj.get("choices", [])
+                    if not choices:
+                        continue
+                    delta = choices[0].get("delta", {})
+
+                    text = delta.get("content") or ""
+                    if text:
+                        if not text_item_started:
+                            text_item_started = True
+                            send("response.output_item.added", {
+                                "type": "response.output_item.added", "output_index": 0,
+                                "item": {"id": msg_item_id, "type": "message", "status": "in_progress",
+                                         "role": "assistant", "content": []},
+                            })
+                            send("response.content_part.added", {
+                                "type": "response.content_part.added",
+                                "output_index": 0, "content_index": 0, "item_id": msg_item_id,
+                                "part": {"type": "output_text", "text": "", "annotations": []},
+                            })
+                        full_text.append(text)
+                        send("response.output_text.delta", {
+                            "type": "response.output_text.delta",
+                            "output_index": 0, "content_index": 0,
+                            "item_id": msg_item_id, "delta": text,
+                        })
+
+                    for tc in delta.get("tool_calls", []):
+                        idx = tc.get("index", 0)
+                        if idx not in tool_calls_buf:
+                            tc_item_id = f"fc_{uuid.uuid4().hex}"
+                            call_id = tc.get("id", f"call_{uuid.uuid4().hex[:8]}")
+                            tool_calls_buf[idx] = {
+                                "id": call_id, "item_id": tc_item_id, "name": "", "args": "",
+                            }
+                            send("response.output_item.added", {
+                                "type": "response.output_item.added", "output_index": idx,
+                                "item": {"id": tc_item_id, "type": "function_call",
+                                         "status": "in_progress", "call_id": call_id,
+                                         "name": "", "arguments": ""},
+                            })
+                        entry = tool_calls_buf[idx]
+                        fn = tc.get("function", {})
+                        if fn.get("name"):
+                            entry["name"] = fn["name"]
+                        args_delta = fn.get("arguments", "")
+                        if args_delta:
+                            entry["args"] += args_delta
+                            send("response.function_call_arguments.delta", {
+                                "type": "response.function_call_arguments.delta",
+                                "output_index": idx, "item_id": entry["item_id"],
+                                "delta": args_delta,
+                            })
+        except Exception as e:
+            log(f"  [responses转换] 流读取异常: {e}")
+
+        # 收尾：文本部分
+        output_items = []
+        if text_item_started:
+            text_done = "".join(full_text)
+            send("response.output_text.done", {
+                "type": "response.output_text.done",
+                "output_index": 0, "content_index": 0,
+                "item_id": msg_item_id, "text": text_done,
+            })
+            send("response.content_part.done", {
+                "type": "response.content_part.done",
+                "output_index": 0, "content_index": 0, "item_id": msg_item_id,
+                "part": {"type": "output_text", "text": text_done, "annotations": []},
+            })
+            msg_item = {"id": msg_item_id, "type": "message", "status": "completed",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": text_done, "annotations": []}]}
+            send("response.output_item.done", {
+                "type": "response.output_item.done", "output_index": 0, "item": msg_item,
+            })
+            output_items.append(msg_item)
+
+        # 收尾：tool calls
+        for idx in sorted(tool_calls_buf):
+            entry = tool_calls_buf[idx]
+            send("response.function_call_arguments.done", {
+                "type": "response.function_call_arguments.done",
+                "output_index": idx, "item_id": entry["item_id"],
+                "arguments": entry["args"],
+            })
+            fc_item = {"id": entry["item_id"], "type": "function_call", "status": "completed",
+                       "call_id": entry["id"], "name": entry["name"], "arguments": entry["args"]}
+            send("response.output_item.done", {
+                "type": "response.output_item.done", "output_index": idx, "item": fc_item,
+            })
+            output_items.append(fc_item)
+
+        send("response.completed", {
+            "type": "response.completed",
+            "response": {**base_resp, "status": "completed", "output": output_items},
+        })
+
     def _do_openai_post(self, body):
         """转发 OpenAI 格式请求（Codex CLI 使用）到内部 OpenAI endpoint"""
         try:
             body_json = json.loads(body)
         except (json.JSONDecodeError, ValueError):
             body_json = {}
+
+        # 剥离 billing header（CodeWiz 后端无法解密 Anthropic 的加密票据）
+        if isinstance(body_json.get("system"), list):
+            _, _ = extract_billing_header(body_json)
+            body = json.dumps(body_json).encode("utf-8")
 
         model = body_json.get("model", "N/A")
         log(f"  [openai] model: {model}  path: {self.path}")
@@ -486,7 +996,7 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         req = urllib.request.Request(target_url, data=body, method="POST")
 
         skip_headers = {"host", "content-length", "transfer-encoding", "connection",
-                        "authorization"}
+                        "authorization", "x-anthropic-billing-header"}
         for key, value in self.headers.items():
             if key.lower() in skip_headers:
                 continue
@@ -566,17 +1076,46 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path in ("/api/hello", "/v1/oauth/hello"):
-            body = json.dumps({"status": "ok"}).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            self._json_response({"status": "ok"})
             return
-        self.send_response(200)
+
+        if self.path == "/admin/status":
+            provider = get_provider()
+            info = {"provider": provider, "port": PORT}
+            if provider == "kimi":
+                with _KIMI_LOCK:
+                    remaining = max(0, int(_KIMI_EXPIRES_AT - time.time()))
+                info["kimi_token_ttl_seconds"] = remaining
+            else:
+                info["codewiz_user"] = USER_EMAIL
+            self._json_response(info)
+            return
+
+        if self.path.startswith("/admin/switch"):
+            from urllib.parse import urlparse, parse_qs
+            qs = parse_qs(urlparse(self.path).query)
+            name = (qs.get("provider") or [""])[0].strip()
+            allowed = {"codewiz", "openclaw", "kimi"}
+            if name not in allowed:
+                self._json_response(
+                    {"error": f"unknown provider '{name}', allowed: {sorted(allowed)}"},
+                    status=400,
+                )
+                return
+            set_provider(name)
+            log(f"[admin] provider 切换为: {name}")
+            self._json_response({"ok": True, "provider": name})
+            return
+
+        self._json_response({"status": "ok", "proxy": "codewiz", "provider": get_provider()})
+
+    def _json_response(self, data, status=200):
+        body = json.dumps(data).encode()
+        self.send_response(status)
         self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(json.dumps({"status": "ok", "proxy": "codewiz"}).encode())
+        self.wfile.write(body)
 
     def do_HEAD(self):
         self.send_response(200)
