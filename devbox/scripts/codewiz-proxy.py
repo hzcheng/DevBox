@@ -657,6 +657,9 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             self._do_deepseek_post(body)
             return
 
+        # openclaw 复用 codewiz 后端，仅将 x-adapter-source 改为 "openclaw"
+        adapter_source = "openclaw" if provider == "openclaw" else ADAPTER_SOURCE
+
         body, body_json, extra_headers, rewrite_logs, model_id = rewrite_body(body)
         for info in rewrite_logs:
             log(f"  [rewrite] {info}")
@@ -690,7 +693,7 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
 
         req.add_header("Cookie", f"{SSO_TOKEN_KEY}={SESSION_TOKEN}")
         req.add_header(SSO_TOKEN_KEY, SESSION_TOKEN)
-        req.add_header("x-adapter-source", ADAPTER_SOURCE)
+        req.add_header("x-adapter-source", adapter_source)
         req.add_header("x-adapter-email", USER_EMAIL)
         req.add_header("X-Adapter-User-Email", USER_EMAIL)
         req.add_header("x-adapter-scenario", "codewiz-opencode-cli")
@@ -1091,6 +1094,8 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             body = json.dumps(body_json).encode("utf-8")
 
         model = body_json.get("model", "N/A")
+        provider = get_provider()
+        adapter_source = "openclaw" if provider == "openclaw" else ADAPTER_SOURCE
         log(f"  [openai] model: {model}  path: {self.path}")
         if VERBOSE:
             log(json.dumps(body_json, indent=2, ensure_ascii=False))
@@ -1107,7 +1112,7 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
 
         req.add_header("Cookie", f"{SSO_TOKEN_KEY}={SESSION_TOKEN}")
         req.add_header(SSO_TOKEN_KEY, SESSION_TOKEN)
-        req.add_header("x-adapter-source", ADAPTER_SOURCE)
+        req.add_header("x-adapter-source", adapter_source)
         req.add_header("x-adapter-email", USER_EMAIL)
         req.add_header("X-Adapter-User-Email", USER_EMAIL)
         req.add_header("x-adapter-scenario", "codewiz-opencode-cli")
