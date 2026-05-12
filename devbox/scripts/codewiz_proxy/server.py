@@ -24,6 +24,25 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length)
 
+        if self.path.startswith("/admin/set-key"):
+            qs = parse_qs(urlparse(self.path).query)
+            provider = (qs.get("provider") or [""])[0].strip()
+            try:
+                raw = json.loads(body).get("key", "")
+                key = raw.strip() if isinstance(raw, str) else ""
+            except (json.JSONDecodeError, ValueError, AttributeError):
+                key = ""
+            if not key:
+                self._json_response({"error": "key 不能为空"}, status=400)
+                return
+            if provider == "cowork":
+                config.save_cowork_api_key(key)
+                log("[admin] cowork API key 已更新")
+                self._json_response({"ok": True, "provider": "cowork"})
+            else:
+                self._json_response({"error": f"provider '{provider}' 不支持 set-key"}, status=400)
+            return
+
         log("=" * 50)
         log(f"{self.command} {self.path}")
 

@@ -25,6 +25,39 @@ DEEPSEEK_OPENAI_BASE_URL = "https://api.deepseek.com"
 DEEPSEEK_MODEL = "deepseek-v4-pro"
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 
+COWORK_BASE_URL = os.environ.get("COWORK_BASE_URL", "https://runway.devops.rednote.life/cowork")
+COWORK_MODEL = os.environ.get("COWORK_MODEL", "global.anthropic.claude-opus-4.7")
+
+_COWORK_KEY_PATH = os.path.join(os.environ.get("HOME", "/root"), ".cache", "codewiz-proxy", "cowork-key")
+
+
+def _load_cowork_api_key() -> str:
+    env = os.environ.get("COWORK_API_KEY", "")
+    if env:
+        return env
+    try:
+        with open(_COWORK_KEY_PATH) as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+COWORK_API_KEY: str = _load_cowork_api_key()
+
+
+def save_cowork_api_key(key: str) -> None:
+    global COWORK_API_KEY
+    COWORK_API_KEY = key
+    try:
+        key_dir = os.path.dirname(_COWORK_KEY_PATH)
+        os.makedirs(key_dir, mode=0o700, exist_ok=True)
+        os.chmod(key_dir, 0o700)
+        with open(_COWORK_KEY_PATH, "w") as f:
+            f.write(key)
+        os.chmod(_COWORK_KEY_PATH, 0o600)
+    except OSError as e:
+        print(f"[config] cowork key 持久化失败: {e}", flush=True)
+
 CODEWIZ_VERSION = "0.1.37"
 
 METRICS_API = "http://codewiz.devops.xiaohongshu.com/complete/metrics/v1"
@@ -98,10 +131,12 @@ def set_provider(name: str) -> None:
     global _CURRENT_PROVIDER
     with _PROVIDER_LOCK:
         _CURRENT_PROVIDER = name
-    try:
-        os.makedirs(os.path.dirname(_PROVIDER_STATE_PATH), exist_ok=True)
-        with open(_PROVIDER_STATE_PATH, "w") as f:
-            f.write(name)
-        os.chmod(_PROVIDER_STATE_PATH, 0o600)
-    except OSError:
-        pass
+        try:
+            state_dir = os.path.dirname(_PROVIDER_STATE_PATH)
+            os.makedirs(state_dir, mode=0o700, exist_ok=True)
+            os.chmod(state_dir, 0o700)
+            with open(_PROVIDER_STATE_PATH, "w") as f:
+                f.write(name)
+            os.chmod(_PROVIDER_STATE_PATH, 0o600)
+        except OSError as e:
+            print(f"[config] provider 持久化失败: {e}", flush=True)
