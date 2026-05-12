@@ -64,9 +64,29 @@ ADAPTER_SOURCE: str = "codewiz-cli"
 
 _SSL_CTX = ssl.create_default_context()
 
-# ── Provider 状态（运行时可切换） ──
+# ── Provider 状态（运行时可切换，重启后持久化） ──
+_PROVIDER_STATE_PATH = os.path.join(
+    os.environ.get("HOME", "/root"), ".cache", "codewiz-proxy", "provider"
+)
+
 _PROVIDER_LOCK = threading.Lock()
-_CURRENT_PROVIDER: str = os.environ.get("CODEWIZ_INITIAL_PROVIDER", "codewiz")
+
+
+def _load_persisted_provider() -> str:
+    env = os.environ.get("CODEWIZ_INITIAL_PROVIDER", "")
+    if env:
+        return env
+    try:
+        with open(_PROVIDER_STATE_PATH) as f:
+            name = f.read().strip()
+        if name:
+            return name
+    except OSError:
+        pass
+    return "codewiz"
+
+
+_CURRENT_PROVIDER: str = _load_persisted_provider()
 
 
 def get_provider() -> str:
@@ -78,3 +98,10 @@ def set_provider(name: str) -> None:
     global _CURRENT_PROVIDER
     with _PROVIDER_LOCK:
         _CURRENT_PROVIDER = name
+    try:
+        os.makedirs(os.path.dirname(_PROVIDER_STATE_PATH), exist_ok=True)
+        with open(_PROVIDER_STATE_PATH, "w") as f:
+            f.write(name)
+        os.chmod(_PROVIDER_STATE_PATH, 0o600)
+    except OSError:
+        pass

@@ -7,7 +7,7 @@ from .deepseek import DeepseekProvider
 
 PROVIDER_REGISTRY: dict[str, "BaseProvider"] = {
     "codewiz":  CodewizProvider(),
-    "openclaw": CodewizProvider(adapter_source="openclaw"),
+    "lobi":     CodewizProvider(adapter_source="lobi"),
     "kimi":     KimiProvider(),
     "deepseek": DeepseekProvider(),
 }
