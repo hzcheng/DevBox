@@ -12,8 +12,15 @@ from ..utils import log, rewrite_body
 from ..telemetry import SESSION
 from .base import BaseProvider
 
-# Cowork 直连，不走本机 https_proxy
+# Cowork 直连，不走本机 https_proxy：
+# 1. 强制 HTTP/1.1（urllib 不支持 HTTP/2，服务端 ALPN 协商 h2 会挂死）
+# 2. 使用无代理 opener（绕过 HTTPS_PROXY 环境变量）
 _SSL_CTX = ssl.create_default_context()
+_SSL_CTX.set_alpn_protocols(["http/1.1"])
+_OPENER = urllib.request.build_opener(
+    urllib.request.ProxyHandler({}),
+    urllib.request.HTTPSHandler(context=_SSL_CTX),
+)
 
 
 def _make_req(url: str, body: bytes, token: str) -> urllib.request.Request:
@@ -75,7 +82,7 @@ class CoworkProvider(BaseProvider):
     def _forward_non_stream(self, handler, req: urllib.request.Request) -> None:
         start_time = time.time()
         try:
-            resp = urllib.request.urlopen(req, context=_SSL_CTX, timeout=600)
+            resp = _OPENER.open(req, timeout=600)
             elapsed = time.time() - start_time
             log(f"  [cowork] 响应 {resp.status} ({elapsed:.1f}s)")
             body = resp.read()
@@ -115,7 +122,7 @@ class CoworkProvider(BaseProvider):
         转换成标准 Anthropic SSE 流返回给 Claude Code。
         """
         try:
-            resp = urllib.request.urlopen(req, context=_SSL_CTX, timeout=600)
+            resp = _OPENER.open(req, timeout=600)
         except urllib.error.HTTPError as e:
             error_body = e.read()
             log(f"  [cowork] 错误 {e.code}: {repr(error_body[:300])}")

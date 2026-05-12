@@ -8,7 +8,7 @@ from .cowork import CoworkProvider
 
 PROVIDER_REGISTRY: dict[str, "BaseProvider"] = {
     "codewiz":  CodewizProvider(),
-    "lobi":     CodewizProvider(adapter_source="lobi"),
+    "lobi":     CodewizProvider(adapter_source="openclaw"),
     "kimi":     KimiProvider(),
     "deepseek": DeepseekProvider(),
     "cowork":   CoworkProvider(),
