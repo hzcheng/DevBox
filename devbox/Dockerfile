@@ -371,6 +371,7 @@ RUN PROTOC_ARCH="${TARGETARCH_OVERRIDE:-${TARGETARCH}}" && \
 # Skip if the respective API key is a real key; otherwise requires CODEWIZ_SESSION_TOKEN
 # env var or ~/.local/share/codewiz/auth.json (persisted via /root volume).
 COPY devbox/scripts/codewiz-proxy.py /usr/local/lib/codewiz-proxy.py
+COPY devbox/scripts/codewiz_proxy/ /usr/local/lib/codewiz_proxy/
 COPY devbox/scripts/start-claude-proxy.sh /usr/local/bin/start-claude-proxy.sh
 COPY devbox/scripts/claude-proxy-wrapper.sh /usr/local/bin/claude-proxy-wrapper.sh
 COPY devbox/scripts/codex-proxy-wrapper.sh /usr/local/bin/codex-proxy-wrapper.sh
