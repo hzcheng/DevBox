@@ -131,6 +131,54 @@ setup_dev_user() {
             log_info "Injected newgrp docker into ${bashrc}"
         fi
     fi
+
+}
+
+# ============================================
+# Tmux 插件安装（session 持久化，运行时下载无需重建镜像）
+# ============================================
+setup_tmux_plugins() {
+    local tmux_dir="${DEV_HOME}/.tmux"
+    local tmux_plugins_dir="${tmux_dir}/plugins"
+    mkdir -p "${tmux_plugins_dir}"
+
+    # Sync tmux.conf from the bind-mounted repo so changes don't require image rebuild.
+    # The repo is mounted at ${DEV_HOME}/projects/DevBox via docker-compose.
+    local repo_tmux_conf="${DEV_HOME}/projects/DevBox/devbox/tmux.conf"
+    if [ -f "${repo_tmux_conf}" ]; then
+        cp -f "${repo_tmux_conf}" /etc/tmux.conf
+        log_info "Synced tmux.conf from repo"
+    fi
+
+    install_tmux_plugin() {
+        local repo_name="$1"
+        local plugin_dir="${tmux_plugins_dir}/${repo_name}"
+        if [ -d "${plugin_dir}/.git" ]; then
+            return 0
+        fi
+
+        log_info "Installing tmux plugin: ${repo_name}"
+        local base_url="https://github.com/tmux-plugins"
+        if git clone --depth=1 "${base_url}/${repo_name}.git" "${plugin_dir}" 2>/dev/null; then
+            return 0
+        elif git clone --depth=1 "https://ghp.ci/${base_url}/${repo_name}.git" "${plugin_dir}" 2>/dev/null; then
+            return 0
+        else
+            log_warn "Failed to install tmux plugin: ${repo_name}. Session persistence will not be available."
+            rm -rf "${plugin_dir}"
+            return 0
+        fi
+    }
+
+    install_tmux_plugin "tpm" || true
+    install_tmux_plugin "tmux-resurrect" || true
+    install_tmux_plugin "tmux-continuum" || true
+
+    # Ensure the entire ~/.tmux tree is owned by dev user so resurrect/continuum
+    # can create ~/.tmux/resurrect/ and write save files.
+    if [ "${DEV_USER}" != "root" ] && [ -d "${tmux_dir}" ]; then
+        chown -R "${DEV_USER}:${DEV_USER}" "${tmux_dir}"
+    fi
 }
 
 # ============================================
@@ -748,6 +796,9 @@ main() {
 
     # 0. 初始化开发用户（必须最先，其他函数依赖 DEV_HOME 目录已就绪）
     setup_dev_user
+
+    # 0.5 安装 tmux 插件（运行时下载，无需重建镜像）
+    setup_tmux_plugins
 
     # 1. 启动 SSH 服务
     setup_ssh
