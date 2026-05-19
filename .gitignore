@@ -6,3 +6,5 @@ skills-lock.json
 .worktrees/
 claude_proxy.tar.gz
 /claude_proxy/
+.dev.env
+.vscode/notes.md

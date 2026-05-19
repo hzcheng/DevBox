@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import ssl
-import threading
 
 TARGET_BASE_URL = os.environ.get(
     "CODEWIZ_TARGET_URL",
@@ -13,17 +12,6 @@ OPENAI_TARGET_BASE_URL = os.environ.get(
     "https://codewiz.devops.xiaohongshu.com/llmratelimit/v3/openai/v1",
 )
 PORT = int(os.environ.get("CODEWIZ_PROXY_PORT", "8089"))
-
-KIMI_TARGET_BASE_URL = "https://api.kimi.com/coding"
-KIMI_MODEL = "kimi-for-coding"
-KIMI_USER_AGENT = "KimiCLI/1.37.0"
-KIMI_CREDENTIALS_PATH = os.path.join(os.environ.get("HOME", "/root"), ".kimi", "credentials", "kimi-code.json")
-KIMI_OAUTH_TOKEN_URL = "https://auth.kimi.com/api/oauth/token"
-
-DEEPSEEK_ANTHROPIC_BASE_URL = os.environ.get("DEEPSEEK_API_URL") or "https://api.deepseek.com/anthropic"
-DEEPSEEK_OPENAI_BASE_URL = "https://api.deepseek.com"
-DEEPSEEK_MODEL = "deepseek-v4-pro"
-DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 
 COWORK_BASE_URL = os.environ.get("COWORK_BASE_URL", "https://runway.devops.rednote.life/cowork")
 COWORK_MODEL = os.environ.get("COWORK_MODEL", "global.anthropic.claude-opus-4.7")
@@ -65,25 +53,106 @@ METRICS_EXTENDED_API = "http://codewiz.devops.xiaohongshu.com/complete/api/v1/me
 LOG_API = "http://codewiz.devops.xiaohongshu.com/complete/api/v1/logs/batch"
 
 MODEL_MAP = {
+    # Sonnet 4.6
     "claude-sonnet-4-6":           "claude-4.6-sonnet-google",
     "claude-sonnet-4-6-20250627":  "claude-4.6-sonnet-google",
     "claude-sonnet-4-5":           "claude-4.6-sonnet-google",
     "claude-sonnet-4-5-20250514":  "claude-4.6-sonnet-google",
     "claude-sonnet-4-5-20250929":  "claude-4.6-sonnet-google",
     "claude-sonnet-4-20250514":    "claude-4.6-sonnet-google",
+    "claude-sonnet-4-0":           "claude-4.6-sonnet-google",
+    "claude-sonnet-4-0-20250514":  "claude-4.6-sonnet-google",
+    # Opus 4.6
     "claude-opus-4-6":             "claude-4.6-opus-google",
     "claude-opus-4-6-20250627":    "claude-4.6-opus-google",
     "claude-opus-4-0-20250515":    "claude-4.6-opus-google",
+    # Opus 4.7
+    "claude-opus-4-7":             "claude-4.7-opus-google",
+    "claude-opus-4-7-20250514":    "claude-4.7-opus-google",
+    # Haiku 4.5
     "claude-haiku-4-5":            "claude-4.5-haiku-google",
     "claude-haiku-4-5-20251001":   "claude-4.5-haiku-google",
-    "claude-sonnet-4-0":           "claude-4.6-sonnet-google",
-    "claude-sonnet-4-0-20250514":  "claude-4.6-sonnet-google",
 }
 
-STRIP_FIELDS = {
+# openai-native provider 的模型（GPT 系列，走内部网关但不需要额外 api-key header）
+OPENAI_NATIVE_MODELS: frozenset[str] = frozenset({
+    "gpt-5.3-codex",
+    "gpt-5.4",
+    "gpt-5.5",
+})
+
+# openai 兼容 provider 的模型（第三方，需附加 api-key header）
+OPENAI_COMPAT_MODELS: frozenset[str] = frozenset({
+    "deepseek-v4-flash",
+    "deepseek-v4-pro",
+    "glm-5.1",
+    "glm-5v-turbo",
+    "kimi-k2.5",
+    "kimi-k2.5-qs",
+    "kimi-k2.6",
+    "dots.llm2.inst",
+})
+
+# 第三方 openai 兼容模型需要附加的固定 header
+# 默认值为内部网关固定 key，可通过环境变量覆盖
+OPENAI_COMPAT_API_KEY_HEADER = "api-key"
+OPENAI_COMPAT_API_KEY_VALUE = os.environ.get(
+    "CODEWIZ_OPENAI_COMPAT_API_KEY",
+    "QST2332f67caa6bdce8ae9fbd3524bdf2fa",
+)
+
+# ── 前缀路由 ──
+# model name 格式 "<provider>:<alias>" 时，按此表解析出 provider 和实际 model。
+# alias 先在 PREFIX_MODEL_ALIAS 中查找；找不到则原样透传给后端。
+# 例：
+#   "codewiz:sonnet"  → provider=codewiz, model=claude-4.6-sonnet-google
+#   "lobi:opus"       → provider=lobi,    model=claude-4.6-opus-google
+#   "cowork:opus"     → provider=cowork,  model 由 cowork provider 自决
+PREFIX_PROVIDERS: frozenset[str] = frozenset({
+    "codewiz", "lobi", "cowork",
+})
+
+# alias → 发送给后端的 model name
+# 空字符串表示让 provider 用自己的默认模型（proxy 不覆盖 model 字段）
+# 注意：cowork provider 会强制把 model 覆盖为 COWORK_MODEL，因此除 default 外的 alias 对其无实际影响
+PREFIX_MODEL_ALIAS: dict[str, str] = {
+    # Claude 落点别名
+    "sonnet":           "claude-4.6-sonnet-google",
+    "sonnet-thinking":  "claude-4.6-sonnet-google:thinking",
+    "opus":             "claude-4.6-opus-google",
+    "opus-thinking":    "claude-4.6-opus-google:thinking",
+    "opus47":           "claude-4.7-opus-google",
+    "haiku":            "claude-4.5-haiku-google",
+    # OpenAI 落点别名（走内部网关 /v3/openai/v1）
+    "gpt53":            "gpt-5.3-codex",
+    "gpt54":            "gpt-5.4",
+    "gpt55":            "gpt-5.5",
+    "deepseek-flash":   "deepseek-v4-flash",
+    "deepseek-pro":     "deepseek-v4-pro",
+    "glm":              "glm-5.1",
+    "glm5v":            "glm-5v-turbo",
+    "kimi25":           "kimi-k2.5",
+    "kimi25qs":         "kimi-k2.5-qs",
+    "kimi26":           "kimi-k2.6",
+    "dots":             "dots.llm2.inst",
+    # 让 provider 自决
+    "default":          "",
+}
+
+# Anthropic 专有字段，仅在 Anthropic 路径剥离
+ANTHROPIC_STRIP_FIELDS: frozenset[str] = frozenset({
     "thinking", "output_config", "temperature_presets",
     "service_tier", "context_management", "betas", "metadata",
-}
+})
+
+# OpenAI 路径剥离字段（排除 metadata / service_tier，这两个是 OpenAI 标准参数）
+OPENAI_STRIP_FIELDS: frozenset[str] = frozenset({
+    "thinking", "output_config", "temperature_presets",
+    "context_management", "betas",
+})
+
+# 向后兼容别名，现有调用方统一用 ANTHROPIC_STRIP_FIELDS
+STRIP_FIELDS = ANTHROPIC_STRIP_FIELDS
 
 ALLOWED_BETA_PREFIXES = (
     "prompt-caching-2", "max-tokens-", "output-", "token-counting-",
@@ -96,47 +165,3 @@ LOG_FILE = None
 ADAPTER_SOURCE: str = "codewiz-cli"
 
 _SSL_CTX = ssl.create_default_context()
-
-# ── Provider 状态（运行时可切换，重启后持久化） ──
-_PROVIDER_STATE_PATH = os.path.join(
-    os.environ.get("HOME", "/root"), ".cache", "codewiz-proxy", "provider"
-)
-
-_PROVIDER_LOCK = threading.Lock()
-
-
-def _load_persisted_provider() -> str:
-    env = os.environ.get("CODEWIZ_INITIAL_PROVIDER", "")
-    if env:
-        return env
-    try:
-        with open(_PROVIDER_STATE_PATH) as f:
-            name = f.read().strip()
-        if name:
-            return name
-    except OSError:
-        pass
-    return "codewiz"
-
-
-_CURRENT_PROVIDER: str = _load_persisted_provider()
-
-
-def get_provider() -> str:
-    with _PROVIDER_LOCK:
-        return _CURRENT_PROVIDER
-
-
-def set_provider(name: str) -> None:
-    global _CURRENT_PROVIDER
-    with _PROVIDER_LOCK:
-        _CURRENT_PROVIDER = name
-        try:
-            state_dir = os.path.dirname(_PROVIDER_STATE_PATH)
-            os.makedirs(state_dir, mode=0o700, exist_ok=True)
-            os.chmod(state_dir, 0o700)
-            with open(_PROVIDER_STATE_PATH, "w") as f:
-                f.write(name)
-            os.chmod(_PROVIDER_STATE_PATH, 0o600)
-        except OSError as e:
-            print(f"[config] provider 持久化失败: {e}", flush=True)

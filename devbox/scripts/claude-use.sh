@@ -1,31 +1,26 @@
 #!/usr/bin/env bash
-# claude-use — switch or inspect the claude proxy provider at runtime.
+# claude-use — inspect and configure the claude proxy at runtime.
 # No container restart needed.
 #
 # Usage:
-#   claude-use <provider>    Switch to the given provider (codewiz | openclaw)
-#   claude-use status        Show the current provider and proxy status
-#   claude-use -h            Show this help message
+#   claude-use status              Show proxy status
+#   claude-use cowork-key <key>    Save the cowork API key (persisted across restarts)
+#   claude-use -h                  Show this help message
 set -euo pipefail
 
 PROXY_PORT="${CODEWIZ_PROXY_PORT:-8089}"
 PROXY_URL="http://127.0.0.1:${PROXY_PORT}"
-AVAILABLE_PROVIDERS="codewiz, lobi, kimi, deepseek, cowork"
 
 usage() {
     cat >&2 <<EOF
 Usage: claude-use <command>
 
 Commands:
-  <provider>        Switch the claude proxy to the given provider
-                    Available: ${AVAILABLE_PROVIDERS}
-  status            Show the current provider and proxy configuration
-  cowork-key <key>  Save the cowork API key (persisted across restarts)
-  -h                Show this help message
+  status                Show proxy status (port, user)
+  cowork-key <key>      Save the cowork API key (persisted across restarts)
+  -h                    Show this help message
 
 Examples:
-  claude-use cowork
-  claude-use codewiz
   claude-use status
   claude-use cowork-key 4f5bf0de5a5d4df6a2ca00b4cdcdcf0a
 EOF
@@ -51,7 +46,7 @@ case "$cmd" in
             echo "[claude-use] usage: claude-use cowork-key <key>" >&2
             exit 1
         fi
-        json_payload=$(printf '%s' "$key" | python3 -c 'import json,sys; print(json.dumps({"key":sys.stdin.read()}))')
+        json_payload=$(python3 -c 'import json,sys; print(json.dumps({"key":sys.argv[1]}))' "$key")
         result=$(curl -sf -X POST \
             -H "Content-Type: application/json" \
             -d "$json_payload" \
@@ -62,10 +57,8 @@ case "$cmd" in
         echo "$result"
         ;;
     *)
-        result=$(curl -sf "${PROXY_URL}/admin/switch?provider=${cmd}" 2>&1) || {
-            echo "[claude-use] proxy not running at ${PROXY_URL}" >&2
-            exit 1
-        }
-        echo "$result"
+        echo "[claude-use] unknown command: ${cmd}" >&2
+        usage
+        exit 1
         ;;
 esac

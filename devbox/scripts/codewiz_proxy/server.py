@@ -10,9 +10,9 @@ from . import config, credentials
 from .utils import log
 from .credentials import load_credentials
 from .providers import PROVIDER_REGISTRY
-from .providers.kimi import get_token_ttl as kimi_token_ttl
 
-ALLOWED_PROVIDERS = set(PROVIDER_REGISTRY.keys())
+# 默认入口 provider，前缀路由在 handle_anthropic/handle_openai 内部做委托
+_DEFAULT_PROVIDER = PROVIDER_REGISTRY["codewiz"]
 
 
 class ProxyHandler(http.server.BaseHTTPRequestHandler):
@@ -46,18 +46,10 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         log("=" * 50)
         log(f"{self.command} {self.path}")
 
-        provider_name = config.get_provider()
-        provider = PROVIDER_REGISTRY.get(provider_name)
-
-        if provider is None:
-            log(f"  [error] 未知 provider: {provider_name}")
-            self._json_response({"error": f"unknown provider: {provider_name}"}, status=500)
-            return
-
         if self._is_openai_path():
-            provider.handle_openai(self, body)
+            _DEFAULT_PROVIDER.handle_openai(self, body, provider_registry=PROVIDER_REGISTRY)
         else:
-            provider.handle_anthropic(self, body)
+            _DEFAULT_PROVIDER.handle_anthropic(self, body, provider_registry=PROVIDER_REGISTRY)
 
     def do_GET(self):
         if self.path in ("/api/hello", "/v1/oauth/hello"):
@@ -65,30 +57,10 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             return
 
         if self.path == "/admin/status":
-            provider_name = config.get_provider()
-            info = {"provider": provider_name, "port": config.PORT}
-            if provider_name == "kimi":
-                info["kimi_token_ttl_seconds"] = kimi_token_ttl()
-            else:
-                info["codewiz_user"] = credentials.USER_EMAIL
-            self._json_response(info)
+            self._json_response({"port": config.PORT, "codewiz_user": credentials.USER_EMAIL})
             return
 
-        if self.path.startswith("/admin/switch"):
-            qs = parse_qs(urlparse(self.path).query)
-            name = (qs.get("provider") or [""])[0].strip()
-            if name not in ALLOWED_PROVIDERS:
-                self._json_response(
-                    {"error": f"unknown provider '{name}', allowed: {sorted(ALLOWED_PROVIDERS)}"},
-                    status=400,
-                )
-                return
-            config.set_provider(name)
-            log(f"[admin] provider 切换为: {name}")
-            self._json_response({"ok": True, "provider": name})
-            return
-
-        self._json_response({"status": "ok", "proxy": "codewiz", "provider": config.get_provider()})
+        self._json_response({"status": "ok", "proxy": "codewiz"})
 
     def _json_response(self, data: dict, status: int = 200) -> None:
         body = json.dumps(data).encode()
@@ -126,6 +98,8 @@ def main():
     log(f"监听: http://127.0.0.1:{config.PORT}")
     log(f"目标: {config.TARGET_BASE_URL}")
     log(f"用户: {credentials.USER_EMAIL}")
+    if not config.OPENAI_COMPAT_API_KEY_VALUE:
+        log("[warn] CODEWIZ_OPENAI_COMPAT_API_KEY 未设置，第三方 OpenAI 兼容模型（DeepSeek/Kimi/GLM/dots）将无法使用")
     log("Model mappings:")
     for src, dst in sorted(config.MODEL_MAP.items()):
         log(f"  {src} -> {dst}")

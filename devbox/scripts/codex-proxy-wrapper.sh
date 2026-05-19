@@ -40,20 +40,9 @@ _ensure_proxy() {
     done
 }
 
-# Skip proxy if a real OpenAI API key is already configured
-if [[ -z "${OPENAI_API_KEY:-}" || "${OPENAI_API_KEY}" == "dummy" ]]; then
-    if _ensure_proxy; then
-        export OPENAI_BASE_URL="${_CODEX_PROXY_URL}"
-        export OPENAI_API_KEY="dummy"
-        # Treat the local proxy as a custom provider so Codex stays on HTTP
-        # responses instead of attempting websocket upgrades that this proxy
-        # does not implement.
-        _CODEX_PROVIDER_ARGS=(
-            -c 'model_provider="codewiz"'
-            -c 'model_providers.codewiz={name="codewiz",base_url="http://127.0.0.1:8089",wire_api="responses",requires_openai_auth=false,supports_websockets=false}'
-        )
-        exec node /usr/local/bin/codex.real "${_CODEX_PROVIDER_ARGS[@]}" "$@"
-    fi
+# Ensure proxy is running (Codex config.toml already has endpoint config from cc-switch)
+if _ensure_proxy; then
+    : # proxy ready
 fi
 
 exec node /usr/local/bin/codex.real "$@"

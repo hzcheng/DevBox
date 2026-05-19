@@ -1,9 +1,20 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from datetime import datetime
 
 from . import config
+
+
+@dataclass
+class RewriteResult:
+    body: bytes
+    body_json: dict
+    extra_headers: dict
+    logs: list[str]
+    model_id: str | None
+    provider_override: str | None
 
 
 def log(msg: str) -> None:
@@ -77,19 +88,53 @@ def strip_thinking_blocks(body_json: dict) -> list[str]:
     return logs
 
 
-def rewrite_body(body_bytes: bytes) -> tuple[bytes, dict, dict, list, str | None]:
-    """模型映射 + 剥离不支持的字段，返回 (new_body, body_json, extra_headers, logs, model_id)"""
+def rewrite_body(body_bytes: bytes, is_openai: bool = False) -> RewriteResult:
+    """模型映射 + 剥离不支持的字段。
+
+    is_openai=True 时使用 OPENAI_STRIP_FIELDS（保留 metadata/service_tier）。
+    RewriteResult.provider_override 非 None 时，调用方应忽略全局 provider 状态，使用此值路由。
+    """
     try:
         body_json = json.loads(body_bytes)
     except (json.JSONDecodeError, ValueError):
-        return body_bytes, {}, {}, [], None
+        return RewriteResult(body_bytes, {}, {}, [], None, None)
 
-    logs = []
-    extra_headers = {}
-    model_id = None
+    logs: list[str] = []
+    extra_headers: dict = {}
+    model_id: str | None = None
+    provider_override: str | None = None
 
     original_model = body_json.get("model", "")
-    if original_model in config.MODEL_MAP:
+
+    # 前缀路由：格式 "<provider>:<alias>"
+    if ":" in original_model:
+        prefix, alias = original_model.split(":", 1)
+        if prefix in config.PREFIX_PROVIDERS:
+            provider_override = prefix
+            mapped_model = config.PREFIX_MODEL_ALIAS.get(alias)
+            if mapped_model is None:
+                log(f"  [rewrite] 未知 alias '{alias}'，原样透传给后端")
+                mapped_model = alias
+            if mapped_model:
+                logs.append(f"prefix route: {original_model} → provider={provider_override}, model={mapped_model}")
+                model_id = mapped_model
+                # :thinking 是本地标记后缀，不是后端真实模型名，发送前需剥离
+                body_json["model"] = mapped_model.rsplit(":thinking", 1)[0] if mapped_model.endswith(":thinking") else mapped_model
+            else:
+                # alias="default"：移除 model 字段，让 provider 用自己的默认值
+                logs.append(f"prefix route: {original_model} → provider={provider_override}, model=<provider default>")
+                body_json.pop("model", None)
+                model_id = None
+        else:
+            # 含冒号但非已知前缀，按普通 MODEL_MAP 处理
+            if original_model in config.MODEL_MAP:
+                mapped = config.MODEL_MAP[original_model]
+                logs.append(f"model: {original_model} -> {mapped}")
+                model_id = mapped
+                body_json["model"] = mapped
+            else:
+                model_id = original_model
+    elif original_model in config.MODEL_MAP:
         mapped = config.MODEL_MAP[original_model]
         logs.append(f"model: {original_model} -> {mapped}")
         model_id = mapped
@@ -97,12 +142,20 @@ def rewrite_body(body_bytes: bytes) -> tuple[bytes, dict, dict, list, str | None
     elif original_model:
         model_id = original_model
 
-    for key in config.STRIP_FIELDS:
+    is_thinking_model = bool(model_id and model_id.endswith(":thinking"))
+    strip_fields = config.OPENAI_STRIP_FIELDS if is_openai else config.ANTHROPIC_STRIP_FIELDS
+    for key in strip_fields:
+        # thinking 模型保留 thinking 参数，其他模型剥离
+        if key == "thinking" and is_thinking_model:
+            continue
         if key in body_json:
             del body_json[key]
             logs.append(f"stripped: {key}")
 
-    logs.extend(strip_thinking_blocks(body_json))
+    # thinking 模型的历史消息中的 thinking block 只有 cowork (Bedrock) 需要剥离，
+    # codewiz 网关支持透传，所以这里不剥离
+    if not is_thinking_model:
+        logs.extend(strip_thinking_blocks(body_json))
 
     billing_val, billing_logs = extract_billing_header(body_json)
     logs.extend(billing_logs)
@@ -111,7 +164,8 @@ def rewrite_body(body_bytes: bytes) -> tuple[bytes, dict, dict, list, str | None
 
     _strip_cache_control_scope(body_json)
 
-    return json.dumps(body_json).encode("utf-8"), body_json, extra_headers, logs, model_id
+    body_out = json.dumps(body_json).encode("utf-8")
+    return RewriteResult(body_out, body_json, extra_headers, logs, model_id, provider_override)
 
 
 def extract_usage(data: bytes) -> tuple[int, int, int, int]:

@@ -72,15 +72,10 @@ JSEOF
     echo "${js}"
 }
 
-# Skip proxy if a real Anthropic API key is already configured
-if [[ -z "${ANTHROPIC_API_KEY:-}" || "${ANTHROPIC_API_KEY}" == "dummy" ]]; then
-    if _ensure_proxy; then
-        export ANTHROPIC_BASE_URL="${_CLAUDE_PROXY_URL}"
-        export ANTHROPIC_API_KEY="dummy"
-        export ANTHROPIC_AUTH_TOKEN="${ANTHROPIC_AUTH_TOKEN:-dummy}"
-        preload_js="$(_generate_preload)"
-        export NODE_OPTIONS="${NODE_OPTIONS:-} --require ${preload_js}"
-    fi
+# Ensure proxy is running (Claude Code settings.json already has endpoint config from cc-switch)
+if _ensure_proxy; then
+    preload_js="$(_generate_preload)"
+    export NODE_OPTIONS="${NODE_OPTIONS:-} --require ${preload_js}"
 fi
 
 exec /usr/local/bin/claude.real "$@"

@@ -135,6 +135,73 @@ setup_dev_user() {
 }
 
 # ============================================
+# 旧环境变量兼容性警告
+# ============================================
+_warn_deprecated_env_vars() {
+    local deprecated_vars=""
+    for var in ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY ANTHROPIC_BASE_URL OPENAI_API_KEY OPENAI_BASE_URL; do
+        if [ -n "${!var:-}" ]; then
+            deprecated_vars="${deprecated_vars}${deprecated_vars:+, }${var}"
+        fi
+    done
+    if [ -n "$deprecated_vars" ]; then
+        log_warn "检测到已弃用的环境变量: ${deprecated_vars}"
+        log_warn "Claude Code / Codex 的 endpoint 配置已迁移到 cc-switch，请通过以下命令管理："
+        log_warn "  cc-switch provider list          # 查看可用 provider"
+        log_warn "  cc-switch provider switch <id>   # 切换 provider"
+        log_warn "  cc-switch provider add           # 添加自定义 provider"
+        log_warn "如需持久化自定义 provider，请修改 devbox/config/cc-switch/providers-patch.sql"
+    fi
+}
+
+# ============================================
+# cc-switch provider 配置（codewiz-proxy 模型切换）
+# ============================================
+setup_cc_switch_providers() {
+    local db="${DEV_HOME}/.cc-switch/cc-switch.db"
+    local patch="/usr/local/share/cc-switch-providers.sql"
+
+    if [ ! -f "$patch" ]; then
+        log_warn "cc-switch provider patch not found at ${patch}, skipping"
+        return 0
+    fi
+
+    # Initialize cc-switch DB if missing (run as dev user to avoid root-owned files)
+    if [ ! -f "$db" ]; then
+        mkdir -p "$(dirname "$db")"
+        if [ "${DEV_USER}" != "root" ] && command -v gosu >/dev/null 2>&1; then
+            gosu "${DEV_USER}" cc-switch provider list > /dev/null 2>&1 || true
+            chown -R "${DEV_USER}:${DEV_USER}" "$(dirname "$db")"
+        else
+            cc-switch provider list > /dev/null 2>&1 || true
+            chown -R "${DEV_USER}:${DEV_USER}" "$(dirname "$db")"
+        fi
+    fi
+
+    # Apply provider patch (INSERT OR IGNORE, preserves existing records including is_current)
+    if [ -f "$db" ]; then
+        if _CC_SWITCH_DB="$db" _CC_SWITCH_PATCH="$patch" python3 -c "
+import sqlite3, sys, os
+try:
+    db = os.environ['_CC_SWITCH_DB']
+    patch = os.environ['_CC_SWITCH_PATCH']
+    conn = sqlite3.connect(db)
+    with open(patch, encoding='utf-8') as f:
+        conn.executescript(f.read())
+    conn.commit()
+    conn.close()
+except Exception as e:
+    print(f'[cc-switch] ERROR: {e}', file=sys.stderr)
+    sys.exit(1)
+"; then
+            log_info "cc-switch providers configured"
+        else
+            log_warn "Failed to apply cc-switch provider patch"
+        fi
+    fi
+}
+
+# ============================================
 # Tmux 插件安装（session 持久化，运行时下载无需重建镜像）
 # ============================================
 setup_tmux_plugins() {
@@ -776,13 +843,9 @@ setup_claude_proxy() {
         /usr/local/bin/start-claude-proxy.sh \
             2>&1 | while IFS= read -r line; do log_info "${line}"; done || true
     fi
-    if curl -sf --max-time 2 "http://127.0.0.1:8089" >/dev/null 2>&1; then
-        export ANTHROPIC_BASE_URL="http://127.0.0.1:8089"
-        export ANTHROPIC_API_KEY="dummy"
-        export ANTHROPIC_AUTH_TOKEN="${ANTHROPIC_AUTH_TOKEN:-dummy}"
-        # Codex shares the same proxy; it handles OpenAI API format on the same port
-        export OPENAI_BASE_URL="http://127.0.0.1:8089"
-        export OPENAI_API_KEY="dummy"
+    # Proxy health check only; endpoint config is managed by cc-switch provider settings
+    if ! curl -sf --max-time 2 "http://127.0.0.1:8089" >/dev/null 2>&1; then
+        log_warn "codewiz-proxy not responding on port 8089"
     fi
 }
 
@@ -797,7 +860,13 @@ main() {
     # 0. 初始化开发用户（必须最先，其他函数依赖 DEV_HOME 目录已就绪）
     setup_dev_user
 
-    # 0.5 安装 tmux 插件（运行时下载，无需重建镜像）
+    # 0.4 旧环境变量兼容性警告
+    _warn_deprecated_env_vars
+
+    # 0.5 配置 cc-switch providers（codewiz-proxy 模型切换）
+    setup_cc_switch_providers
+
+    # 0.6 安装 tmux 插件（运行时下载，无需重建镜像）
     setup_tmux_plugins
 
     # 1. 启动 SSH 服务

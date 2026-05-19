@@ -8,7 +8,7 @@ import urllib.error
 import urllib.request
 
 from .. import config
-from ..utils import log, rewrite_body
+from ..utils import log, rewrite_body, strip_thinking_blocks
 from ..telemetry import SESSION
 from .base import BaseProvider
 
@@ -50,16 +50,26 @@ class CoworkProvider(BaseProvider):
             return False
         return True
 
-    def handle_anthropic(self, handler, body: bytes) -> None:
+    def handle_anthropic(
+        self,
+        handler,
+        body: bytes,
+        provider_registry: "dict | None" = None,
+    ) -> None:
         if not self._check_api_key(handler):
             return
 
-        _, body_json, _extra, rewrite_logs, _ = rewrite_body(body)
-        for info in rewrite_logs:
+        r = rewrite_body(body)
+        for info in r.logs:
             log(f"  [cowork/rewrite] {info}")
+        body_json = r.body_json
+
+        # Bedrock 的 thinking block signature 严格 session 绑定，历史消息中的必须剥离
+        strip_thinking_blocks(body_json)
 
         original_model = body_json.get("model", "")
-        if original_model != config.COWORK_MODEL:
+        body_json["model"] = config.COWORK_MODEL
+        if original_model and original_model != config.COWORK_MODEL:
             log(f"  [cowork] model: {original_model} -> {config.COWORK_MODEL}")
 
         is_stream = body_json.get("stream", False)
@@ -108,7 +118,12 @@ class CoworkProvider(BaseProvider):
             handler.end_headers()
             handler.wfile.write(json.dumps({"error": str(e)}).encode())
 
-    def handle_openai(self, handler, body: bytes) -> None:
+    def handle_openai(
+        self,
+        handler,
+        body: bytes,
+        provider_registry: "dict | None" = None,
+    ) -> None:
         # cowork 只暴露 Anthropic 路径，openai 路径不支持
         handler.send_response(501)
         handler.send_header("Content-Type", "application/json")

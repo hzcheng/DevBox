@@ -398,3 +398,4 @@ RUN sed -i 's/\r$//' /usr/local/lib/codewiz-proxy.py \
     && cp /usr/local/bin/codex-proxy-wrapper.sh "$CODEX_SYMLINK" \
     && chmod +x "$CODEX_SYMLINK"
 
+COPY devbox/config/cc-switch/providers-patch.sql /usr/local/share/cc-switch-providers.sql

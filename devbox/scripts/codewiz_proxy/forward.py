@@ -138,10 +138,16 @@ def forward_responses(handler, req: urllib.request.Request, model: str) -> None:
     tool_calls_buf = {}
     msg_item_id = f"msg_{uuid.uuid4().hex}"
     text_item_started = False
+    # output_index 在 Responses API 中是全局递增的；文本占 0，function call 从 1 开始
+    next_output_index = 1
 
     buf = b""
+    usage_info = None
+    stream_done = False
     try:
         for chunk in resp:
+            if stream_done:
+                break
             buf += chunk
             while b"\n" in buf:
                 line, buf = buf.split(b"\n", 1)
@@ -150,17 +156,29 @@ def forward_responses(handler, req: urllib.request.Request, model: str) -> None:
                     continue
                 payload = line[5:].strip()
                 if payload == b"[DONE]":
+                    stream_done = True
                     break
                 try:
                     cj = json.loads(payload)
                 except (json.JSONDecodeError, ValueError):
+                    continue
+                # 提取 usage（Chat Completions SSE 末尾的 usage chunk，choices 为空）
+                u = cj.get("usage")
+                if isinstance(u, dict) and u:
+                    usage_info = {
+                        "input_tokens": u.get("prompt_tokens", 0),
+                        "output_tokens": u.get("completion_tokens", 0),
+                        "total_tokens": u.get("total_tokens", 0),
+                    }
                     continue
                 choices = cj.get("choices", [])
                 if not choices:
                     continue
                 delta = choices[0].get("delta", {})
 
-                text = delta.get("content") or ""
+                text = delta.get("content")
+                if text is None:
+                    text = delta.get("reasoning_content") or ""
                 if text:
                     if not text_item_started:
                         text_item_started = True
@@ -181,16 +199,19 @@ def forward_responses(handler, req: urllib.request.Request, model: str) -> None:
                         "item_id": msg_item_id, "delta": text,
                     })
 
-                for tc in delta.get("tool_calls", []):
+                for tc in (delta.get("tool_calls") or []):
                     idx = tc.get("index", 0)
                     if idx not in tool_calls_buf:
                         tc_item_id = f"fc_{uuid.uuid4().hex}"
                         call_id = tc.get("id", f"call_{uuid.uuid4().hex[:8]}")
+                        output_index = next_output_index
+                        next_output_index += 1
                         tool_calls_buf[idx] = {
                             "id": call_id, "item_id": tc_item_id, "name": "", "args": "",
+                            "output_index": output_index,
                         }
                         send("response.output_item.added", {
-                            "type": "response.output_item.added", "output_index": idx,
+                            "type": "response.output_item.added", "output_index": output_index,
                             "item": {"id": tc_item_id, "type": "function_call",
                                      "status": "in_progress", "call_id": call_id,
                                      "name": "", "arguments": ""},
@@ -204,7 +225,7 @@ def forward_responses(handler, req: urllib.request.Request, model: str) -> None:
                         entry["args"] += args_delta
                         send("response.function_call_arguments.delta", {
                             "type": "response.function_call_arguments.delta",
-                            "output_index": idx, "item_id": entry["item_id"],
+                            "output_index": entry["output_index"], "item_id": entry["item_id"],
                             "delta": args_delta,
                         })
     except Exception as e:
@@ -235,17 +256,17 @@ def forward_responses(handler, req: urllib.request.Request, model: str) -> None:
         entry = tool_calls_buf[idx]
         send("response.function_call_arguments.done", {
             "type": "response.function_call_arguments.done",
-            "output_index": idx, "item_id": entry["item_id"],
+            "output_index": entry["output_index"], "item_id": entry["item_id"],
             "arguments": entry["args"],
         })
         fc_item = {"id": entry["item_id"], "type": "function_call", "status": "completed",
                    "call_id": entry["id"], "name": entry["name"], "arguments": entry["args"]}
         send("response.output_item.done", {
-            "type": "response.output_item.done", "output_index": idx, "item": fc_item,
+            "type": "response.output_item.done", "output_index": entry["output_index"], "item": fc_item,
         })
         output_items.append(fc_item)
 
     send("response.completed", {
         "type": "response.completed",
-        "response": {**base_resp, "status": "completed", "output": output_items},
+        "response": {**base_resp, "status": "completed", "output": output_items, "usage": usage_info},
     })
