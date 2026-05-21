@@ -67,7 +67,8 @@ def _convert_responses_to_chat(body_json: dict) -> dict:
         if m.get("type") == "function_call_output":
             return {
                 "role": "tool",
-                "tool_call_id": m.get("call_id", ""),
+                # call_id 优先，不存在或为空时回退到 id（Codex 某些版本用 id）
+                "tool_call_id": m.get("call_id") or m.get("id", ""),
                 "content": m.get("output", "") or "",
             }
 
@@ -95,7 +96,7 @@ def _convert_responses_to_chat(body_json: dict) -> dict:
             for part in content:
                 if isinstance(part, dict) and part.get("type") == "function_call":
                     extracted_tool_calls.append({
-                        "id": part.get("id") or part.get("call_id", ""),
+                        "id": part.get("call_id") or part.get("id", ""),
                         "type": "function",
                         "function": {
                             "name": part.get("name", ""),

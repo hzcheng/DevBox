@@ -13,100 +13,154 @@ from .utils import log, extract_usage
 from .telemetry import SESSION, fire_fake_session
 
 
+# ── 可重试的网络错误 ──
+_RETRYABLE_ERRNOS = frozenset({
+    104,  # ECONNRESET  Connection reset by peer
+    111,  # ECONNREFUSED Connection refused
+    32,   # EPIPE       Broken pipe
+})
+
+
+def _is_retryable_error(e: Exception) -> bool:
+    """判断异常是否属于可重试的网络层错误"""
+    if isinstance(e, urllib.error.URLError):
+        reason = str(e.reason).lower()
+        if any(k in reason for k in ("connection reset", "connection refused", "broken pipe", "timeout")):
+            return True
+    if isinstance(e, OSError):
+        if e.errno in _RETRYABLE_ERRNOS:
+            return True
+    return False
+
+
+def _rebuild_request(req: urllib.request.Request) -> urllib.request.Request:
+    """根据已有 Request 重新构造一个可重试的副本"""
+    new_req = urllib.request.Request(
+        req.full_url,
+        data=req.data,
+        method=req.get_method(),
+    )
+    # 复制 headers（跳过 urllib 自动添加的 Host/Content-Length 等）
+    for key, value in req.header_items():
+        if key.lower() not in ("host", "content-length"):
+            new_req.add_header(key, value)
+    return new_req
+
+
 def forward(handler, req: urllib.request.Request, body_json: dict,
             model_id: str | None, n: int,
             session_id: str, conversation_id: str, should_report: bool) -> None:
     """统一 HTTP 转发：流式写回响应，按需触发遥测"""
     start_time = time.time()
-    try:
-        resp = urllib.request.urlopen(req, context=config._SSL_CTX, timeout=600)
-        elapsed = time.time() - start_time
-        log(f"响应 {resp.status} ({elapsed:.1f}s)")
-
-        handler.send_response(resp.status)
-        for key, value in resp.getheaders():
-            if key.lower() not in ("transfer-encoding", "connection"):
-                handler.send_header(key, value)
-        handler.end_headers()
-
-        collected = bytearray()
-        while True:
-            chunk = resp.read(4096)
-            if not chunk:
-                break
-            handler.wfile.write(chunk)
-            handler.wfile.flush()
-            if should_report:
-                collected.extend(chunk)
-
-        if should_report and collected:
-            input_tokens, output_tokens, cache_read, cache_write = extract_usage(bytes(collected))
-            if input_tokens > 0 or output_tokens > 0:
-                log(f"  [metrics] #{n}: in={input_tokens} out={output_tokens}")
-                threading.Thread(
-                    target=fire_fake_session,
-                    args=(model_id, session_id, conversation_id,
-                          input_tokens, output_tokens, cache_read, cache_write),
-                    daemon=True,
-                ).start()
-
-    except urllib.error.HTTPError as e:
-        elapsed = time.time() - start_time
-        error_body = e.read()
-        log(f"错误 {e.code} ({elapsed:.1f}s): {repr(error_body[:300])}")
-        dump_path = os.path.expanduser(
-            f"~/.cache/claude_proxy/codewiz_failed_{int(time.time())}_{uuid.uuid4().hex[:8]}.json"
-        )
-        os.makedirs(os.path.dirname(dump_path), exist_ok=True)
+    last_error = None
+    for attempt in range(2):
         try:
-            with open(dump_path, "w", encoding="utf-8") as f:
-                json.dump(body_json, f, ensure_ascii=False, indent=2)
-            log(f"  body dumped to: {dump_path}")
-        except Exception as dump_err:
-            log(f"  dump failed: {dump_err}")
-        else:
-            try:
-                os.chmod(dump_path, 0o600)
-            except OSError:
-                pass
-        handler.send_response(e.code)
-        handler.send_header("Content-Type", "application/json")
-        handler.end_headers()
-        handler.wfile.write(error_body)
+            if attempt > 0:
+                req = _rebuild_request(req)
+            resp = urllib.request.urlopen(req, context=config._SSL_CTX, timeout=600)
+            elapsed = time.time() - start_time
+            log(f"响应 {resp.status} ({elapsed:.1f}s)")
 
-    except Exception as e:
-        elapsed = time.time() - start_time
-        log(f"异常 ({elapsed:.1f}s): {e}")
-        handler.send_response(502)
-        handler.send_header("Content-Type", "application/json")
-        handler.end_headers()
-        handler.wfile.write(json.dumps({"error": str(e)}).encode())
+            handler.send_response(resp.status)
+            for key, value in resp.getheaders():
+                if key.lower() not in ("transfer-encoding", "connection"):
+                    handler.send_header(key, value)
+            handler.end_headers()
+
+            collected = bytearray()
+            while True:
+                chunk = resp.read(4096)
+                if not chunk:
+                    break
+                handler.wfile.write(chunk)
+                handler.wfile.flush()
+                if should_report:
+                    collected.extend(chunk)
+
+            if should_report and collected:
+                input_tokens, output_tokens, cache_read, cache_write = extract_usage(bytes(collected))
+                if input_tokens > 0 or output_tokens > 0:
+                    log(f"  [metrics] #{n}: in={input_tokens} out={output_tokens}")
+                    threading.Thread(
+                        target=fire_fake_session,
+                        args=(model_id, session_id, conversation_id,
+                              input_tokens, output_tokens, cache_read, cache_write),
+                        daemon=True,
+                    ).start()
+            return  # 成功
+
+        except urllib.error.HTTPError as e:
+            elapsed = time.time() - start_time
+            error_body = e.read()
+            log(f"错误 {e.code} ({elapsed:.1f}s): {repr(error_body[:300])}")
+            dump_path = os.path.expanduser(
+                f"~/.cache/claude_proxy/codewiz_failed_{int(time.time())}_{uuid.uuid4().hex[:8]}.json"
+            )
+            os.makedirs(os.path.dirname(dump_path), exist_ok=True)
+            try:
+                with open(dump_path, "w", encoding="utf-8") as f:
+                    json.dump(body_json, f, ensure_ascii=False, indent=2)
+                log(f"  body dumped to: {dump_path}")
+            except Exception as dump_err:
+                log(f"  dump failed: {dump_err}")
+            else:
+                try:
+                    os.chmod(dump_path, 0o600)
+                except OSError:
+                    pass
+            handler.send_response(e.code)
+            handler.send_header("Content-Type", "application/json")
+            handler.end_headers()
+            handler.wfile.write(error_body)
+            return
+
+        except Exception as e:
+            if _is_retryable_error(e) and attempt == 0:
+                log(f"  [retry] {e}，1s 后重试...")
+                time.sleep(1)
+                last_error = e
+                continue
+            elapsed = time.time() - start_time
+            log(f"异常 ({elapsed:.1f}s): {e}")
+            handler.send_response(502)
+            handler.send_header("Content-Type", "application/json")
+            handler.end_headers()
+            handler.wfile.write(json.dumps({"error": str(e)}).encode())
+            return
 
 
 def forward_responses(handler, req: urllib.request.Request, model: str) -> None:
     """把 chat.completion.chunk SSE 流转成 OpenAI Responses API SSE 流"""
     start_time = time.time()
-    try:
-        resp = urllib.request.urlopen(req, context=config._SSL_CTX, timeout=600)
-        elapsed = time.time() - start_time
-        log(f"响应 {resp.status} ({elapsed:.1f}s) [responses转换]")
-    except urllib.error.HTTPError as e:
-        elapsed = time.time() - start_time
-        error_body = e.read()
-        log(f"错误 {e.code} ({elapsed:.1f}s): {repr(error_body[:300])}")
-        handler.send_response(e.code)
-        handler.send_header("Content-Type", "application/json")
-        handler.end_headers()
-        handler.wfile.write(error_body)
-        return
-    except Exception as e:
-        elapsed = time.time() - start_time
-        log(f"异常 ({elapsed:.1f}s): {e}")
-        handler.send_response(502)
-        handler.send_header("Content-Type", "application/json")
-        handler.end_headers()
-        handler.wfile.write(json.dumps({"error": str(e)}).encode())
-        return
+    for attempt in range(2):
+        try:
+            if attempt > 0:
+                req = _rebuild_request(req)
+            resp = urllib.request.urlopen(req, context=config._SSL_CTX, timeout=600)
+            elapsed = time.time() - start_time
+            log(f"响应 {resp.status} ({elapsed:.1f}s) [responses转换]")
+            break  # urlopen 成功，跳出重试循环
+        except urllib.error.HTTPError as e:
+            elapsed = time.time() - start_time
+            error_body = e.read()
+            log(f"错误 {e.code} ({elapsed:.1f}s): {repr(error_body[:300])}")
+            handler.send_response(e.code)
+            handler.send_header("Content-Type", "application/json")
+            handler.end_headers()
+            handler.wfile.write(error_body)
+            return
+        except Exception as e:
+            if _is_retryable_error(e) and attempt == 0:
+                log(f"  [retry] {e}，1s 后重试...")
+                time.sleep(1)
+                continue
+            elapsed = time.time() - start_time
+            log(f"异常 ({elapsed:.1f}s): {e}")
+            handler.send_response(502)
+            handler.send_header("Content-Type", "application/json")
+            handler.end_headers()
+            handler.wfile.write(json.dumps({"error": str(e)}).encode())
+            return
 
     resp_id = f"resp_{uuid.uuid4().hex}"
     created_at = int(time.time())
@@ -177,7 +231,7 @@ def forward_responses(handler, req: urllib.request.Request, model: str) -> None:
                 delta = choices[0].get("delta", {})
 
                 text = delta.get("content")
-                if text is None:
+                if not text:
                     text = delta.get("reasoning_content") or ""
                 if text:
                     if not text_item_started:

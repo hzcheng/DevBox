@@ -399,3 +399,5 @@ RUN sed -i 's/\r$//' /usr/local/lib/codewiz-proxy.py \
     && chmod +x "$CODEX_SYMLINK"
 
 COPY devbox/config/cc-switch/providers-patch.sql /usr/local/share/cc-switch-providers.sql
+
+RUN sudo apt install -y libopenblas-dev libaio-dev

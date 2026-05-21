@@ -20,9 +20,27 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
     def _is_openai_path(self) -> bool:
         return self.path.startswith("/responses") or self.path.startswith("/v1/chat")
 
+    def _handle_count_tokens(self, body: bytes) -> None:
+        """codewiz 网关不支持 count_tokens，返回模拟响应避免 Claude Code 反复 404。"""
+        try:
+            body_json = json.loads(body)
+            messages = body_json.get("messages", [])
+            system = body_json.get("system", "")
+            # 粗略估算：每 4 字符约 1 token（含 JSON 包装开销）
+            total_chars = len(json.dumps(messages, ensure_ascii=False)) + len(json.dumps(system, ensure_ascii=False))
+            estimated = max(1, total_chars // 4)
+        except Exception:
+            estimated = 1000
+        self._json_response({"input_tokens": estimated})
+
     def do_POST(self):
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length)
+
+        # codewiz 网关不支持 count_tokens，直接返回模拟值
+        if "count_tokens" in self.path:
+            self._handle_count_tokens(body)
+            return
 
         if self.path.startswith("/admin/set-key"):
             qs = parse_qs(urlparse(self.path).query)
