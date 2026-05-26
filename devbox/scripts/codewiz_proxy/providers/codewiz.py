@@ -58,19 +58,50 @@ def _convert_responses_to_chat(body_json: dict) -> dict:
             return new_parts
         return content
 
-    def _norm_msg(m) -> dict | None:
+    def _norm_msg(m, id_to_call_id: dict[str, str] | None = None) -> dict | None:
         """把 Responses API 的 message 对象转成 Chat Completions 格式。"""
         if not isinstance(m, dict):
             return None
 
+        mtype = m.get("type")
+
         # ── function_call_output → Chat Completions tool message ──
-        if m.get("type") == "function_call_output":
+        if mtype == "function_call_output":
+            # Codex 可能用 call_id / tool_call_id / id / item_id 中的任意一个。
+            # call_id / tool_call_id 是正确引用，直接使用；
+            # id / item_id 可能是 Codex 用 msg_id 引用，需要映射回 call_id。
+            for key in ("call_id", "tool_call_id"):
+                val = m.get(key)
+                if val:
+                    return {
+                        "role": "tool",
+                        "tool_call_id": val,
+                        "content": m.get("output", "") or "",
+                    }
+            for key in ("id", "item_id"):
+                val = m.get(key)
+                if val:
+                    if id_to_call_id and val in id_to_call_id:
+                        mapped = id_to_call_id[val]
+                        log(f"  [WARN] function_call_output mapped {key}={val} -> call_id={mapped}")
+                        val = mapped
+                    return {
+                        "role": "tool",
+                        "tool_call_id": val,
+                        "content": m.get("output", "") or "",
+                    }
+            log(f"  [WARN] function_call_output has no usable id fields, raw: {json.dumps(m, ensure_ascii=False)}")
             return {
                 "role": "tool",
-                # call_id 优先，不存在或为空时回退到 id（Codex 某些版本用 id）
-                "tool_call_id": m.get("call_id") or m.get("id", ""),
+                "tool_call_id": "",
                 "content": m.get("output", "") or "",
             }
+
+        # ── standalone function_call (no role) ──
+        # These are handled by the caller (_convert_responses_to_chat) which merges
+        # consecutive function_call items into a single assistant message with tool_calls.
+        if mtype == "function_call":
+            return None
 
         role = m.get("role")
         content = m.get("content")
@@ -120,11 +151,62 @@ def _convert_responses_to_chat(body_json: dict) -> dict:
 
     inp = body_json.get("input")
     messages: list[dict] = []
+    # First pass: build id -> call_id mapping from function_call items
+    # Codex sometimes references function_call by 'id' instead of 'call_id' in function_call_output
+    id_to_call_id: dict[str, str] = {}
+
+    def _register_call_id(m: dict) -> None:
+        call_id = m.get("call_id")
+        msg_id = m.get("id")
+        if call_id and msg_id:
+            id_to_call_id[msg_id] = call_id
+        item_id = m.get("item_id")
+        if call_id and item_id:
+            id_to_call_id[item_id] = call_id
+
     if isinstance(inp, list):
         for m in inp:
-            nm = _norm_msg(m)
+            if isinstance(m, dict):
+                # Standalone function_call item
+                if m.get("type") == "function_call":
+                    _register_call_id(m)
+                # function_call embedded in content array
+                content = m.get("content")
+                if isinstance(content, list):
+                    for part in content:
+                        if isinstance(part, dict) and part.get("type") == "function_call":
+                            _register_call_id(part)
+
+    if isinstance(inp, list):
+        i = 0
+        while i < len(inp):
+            m = inp[i]
+            # Collect consecutive function_call items into a single assistant message
+            if isinstance(m, dict) and m.get("type") == "function_call":
+                tool_calls = []
+                while i < len(inp) and isinstance(inp[i], dict) and inp[i].get("type") == "function_call":
+                    fc = inp[i]
+                    tool_calls.append({
+                        "id": fc.get("call_id") or fc.get("id", ""),
+                        "type": "function",
+                        "function": {
+                            "name": fc.get("name", ""),
+                            "arguments": fc.get("arguments", ""),
+                        },
+                    })
+                    i += 1
+                messages.append({
+                    "role": "assistant",
+                    "content": "",
+                    "reasoning_content": "",
+                    "tool_calls": tool_calls,
+                })
+                continue
+
+            nm = _norm_msg(m, id_to_call_id)
             if nm is not None:
                 messages.append(nm)
+            i += 1
     elif isinstance(inp, str):
         messages = [{"role": "user", "content": inp}]
 
@@ -405,7 +487,7 @@ class CodewizProvider(BaseProvider):
                 req.add_header(config.OPENAI_COMPAT_API_KEY_HEADER, config.OPENAI_COMPAT_API_KEY_VALUE)
 
         if is_responses_path:
-            forward_responses(handler, req, model)
+            forward_responses(handler, req, model, body_json)
         else:
             n, session_id, conversation_id = SESSION.bump_and_snapshot()
             forward(handler, req, chat_body_json, model, n, session_id, conversation_id, False)

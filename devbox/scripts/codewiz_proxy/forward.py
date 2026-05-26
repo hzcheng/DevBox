@@ -120,16 +120,23 @@ def forward(handler, req: urllib.request.Request, body_json: dict,
                 time.sleep(1)
                 last_error = e
                 continue
+            # Silent handling for client disconnects (BrokenPipe, ConnectionReset)
+            if isinstance(e, (BrokenPipeError, ConnectionResetError)):
+                return
             elapsed = time.time() - start_time
             log(f"异常 ({elapsed:.1f}s): {e}")
-            handler.send_response(502)
-            handler.send_header("Content-Type", "application/json")
-            handler.end_headers()
-            handler.wfile.write(json.dumps({"error": str(e)}).encode())
+            try:
+                handler.send_response(502)
+                handler.send_header("Content-Type", "application/json")
+                handler.end_headers()
+                handler.wfile.write(json.dumps({"error": str(e)}).encode())
+            except (BrokenPipeError, ConnectionResetError):
+                pass
             return
 
 
-def forward_responses(handler, req: urllib.request.Request, model: str) -> None:
+def forward_responses(handler, req: urllib.request.Request, model: str,
+                        original_body: dict | None = None) -> None:
     """把 chat.completion.chunk SSE 流转成 OpenAI Responses API SSE 流"""
     start_time = time.time()
     for attempt in range(2):
@@ -144,22 +151,54 @@ def forward_responses(handler, req: urllib.request.Request, model: str) -> None:
             elapsed = time.time() - start_time
             error_body = e.read()
             log(f"错误 {e.code} ({elapsed:.1f}s): {repr(error_body[:300])}")
-            handler.send_response(e.code)
-            handler.send_header("Content-Type", "application/json")
-            handler.end_headers()
-            handler.wfile.write(error_body)
+            # Debug: log request body on error
+            try:
+                req_body = json.loads(req.data) if req.data else {}
+                messages = req_body.get("messages", [])
+                for i, msg in enumerate(messages):
+                    if msg.get("role") == "tool":
+                        tcid = msg.get("tool_call_id", "<MISSING>")
+                        log(f"  [DEBUG] msg[{i}] tool_call_id={repr(tcid)} content_preview={repr(msg.get('content', '')[:80])}")
+                # Dump both converted and original request bodies for investigation
+                ts = int(time.time())
+                uid = uuid.uuid4().hex[:8]
+                base_path = os.path.expanduser("~/.cache/claude_proxy")
+                os.makedirs(base_path, exist_ok=True)
+                dump_path = os.path.join(base_path, f"codewiz_failed_{ts}_{uid}.json")
+                with open(dump_path, "w", encoding="utf-8") as f:
+                    json.dump(req_body, f, ensure_ascii=False, indent=2)
+                log(f"  body dumped to: {dump_path}")
+                if original_body:
+                    orig_path = os.path.join(base_path, f"codewiz_failed_{ts}_{uid}_original.json")
+                    with open(orig_path, "w", encoding="utf-8") as f:
+                        json.dump(original_body, f, ensure_ascii=False, indent=2)
+                    log(f"  original body dumped to: {orig_path}")
+            except Exception:
+                pass
+            try:
+                handler.send_response(e.code)
+                handler.send_header("Content-Type", "application/json")
+                handler.end_headers()
+                handler.wfile.write(error_body)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
             return
         except Exception as e:
             if _is_retryable_error(e) and attempt == 0:
                 log(f"  [retry] {e}，1s 后重试...")
                 time.sleep(1)
                 continue
+            if isinstance(e, (BrokenPipeError, ConnectionResetError)):
+                return
             elapsed = time.time() - start_time
             log(f"异常 ({elapsed:.1f}s): {e}")
-            handler.send_response(502)
-            handler.send_header("Content-Type", "application/json")
-            handler.end_headers()
-            handler.wfile.write(json.dumps({"error": str(e)}).encode())
+            try:
+                handler.send_response(502)
+                handler.send_header("Content-Type", "application/json")
+                handler.end_headers()
+                handler.wfile.write(json.dumps({"error": str(e)}).encode())
+            except (BrokenPipeError, ConnectionResetError):
+                pass
             return
 
     resp_id = f"resp_{uuid.uuid4().hex}"
@@ -177,9 +216,12 @@ def forward_responses(handler, req: urllib.request.Request, model: str) -> None:
 
     def send(event, data):
         nonlocal seq
-        handler.wfile.write(sse(event, data))
-        handler.wfile.flush()
-        seq += 1
+        try:
+            handler.wfile.write(sse(event, data))
+            handler.wfile.flush()
+            seq += 1
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     base_resp = {
         "id": resp_id, "object": "response", "created_at": created_at,
@@ -231,7 +273,7 @@ def forward_responses(handler, req: urllib.request.Request, model: str) -> None:
                 delta = choices[0].get("delta", {})
 
                 text = delta.get("content")
-                if not text:
+                if text is None:
                     text = delta.get("reasoning_content") or ""
                 if text:
                     if not text_item_started:
@@ -283,7 +325,10 @@ def forward_responses(handler, req: urllib.request.Request, model: str) -> None:
                             "delta": args_delta,
                         })
     except Exception as e:
-        log(f"  [responses转换] 流读取异常: {e}")
+        if isinstance(e, (BrokenPipeError, ConnectionResetError)):
+            pass
+        else:
+            log(f"  [responses转换] 流读取异常: {e}")
 
     output_items = []
     if text_item_started:
