@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import ssl
+import struct
 import time
 import urllib.error
 import urllib.request
@@ -130,10 +131,68 @@ class CoworkProvider(BaseProvider):
         handler.end_headers()
         handler.wfile.write(json.dumps({"error": "cowork provider does not support OpenAI path"}).encode())
 
+    # ── EventStream 解析工具 ──
+    @staticmethod
+    def _parse_eventstream_message(buf: bytes):
+        """解析单个 Amazon EventStream 消息。
+        返回 (event_type: str, payload: bytes, is_exception: bool, bytes_consumed: int)
+        或 None（数据不足）"""
+        if len(buf) < 12:
+            return None
+
+        total_len = struct.unpack(">I", buf[:4])[0]
+        headers_len = struct.unpack(">I", buf[4:8])[0]
+
+        if total_len < 12 or headers_len > total_len - 12:
+            return None
+        if len(buf) < total_len:
+            return None
+
+        headers_data = buf[12:12 + headers_len]
+        payload = buf[12 + headers_len:total_len - 4]
+
+        pos = 0
+        event_type = None
+        message_type = None
+
+        while pos < len(headers_data):
+            key_len = headers_data[pos]
+            pos += 1
+            key = headers_data[pos:pos + key_len].decode("utf-8")
+            pos += key_len
+            value_type = headers_data[pos]
+            pos += 1
+
+            if value_type == 0:
+                value = True
+            elif value_type == 1:
+                value = False
+            elif value_type == 7:  # string
+                if pos + 2 > len(headers_data):
+                    break
+                value_len = struct.unpack(">H", headers_data[pos:pos + 2])[0]
+                pos += 2
+                if pos + value_len > len(headers_data):
+                    break
+                value = headers_data[pos:pos + value_len].decode("utf-8")
+                pos += value_len
+            else:
+                # 不支持的 header value 类型，停止解析 headers
+                break
+
+            if key == ":event-type":
+                event_type = value
+            elif key == ":message-type":
+                message_type = value
+
+        is_exception = message_type == "exception"
+        return event_type, payload, is_exception, total_len
+
     def _forward_stream(self, handler, req: urllib.request.Request) -> None:
         """
-        Bedrock streaming 响应格式：每行一个 JSON
-          {"chunk":{"bytes":"<base64(Anthropic SSE event JSON)>"},...}
+        Bedrock streaming 响应格式：
+          旧：每行一个 JSON  {"chunk":{"bytes":"<base64>"},...}
+          新：Amazon EventStream 二进制格式（Content-Type: application/vnd.amazon.eventstream）
         转换成标准 Anthropic SSE 流返回给 Claude Code。
         """
         try:
@@ -160,47 +219,131 @@ class CoworkProvider(BaseProvider):
         handler.send_header("Cache-Control", "no-cache")
         handler.end_headers()
 
+        content_type = resp.getheader("Content-Type", "")
+        log(f"  [cowork] Content-Type: {content_type}")
+        if "eventstream" in content_type:
+            self._forward_eventstream(handler, resp)
+        else:
+            self._forward_ndjson_stream(handler, resp)
+
+    def _forward_eventstream(self, handler, resp) -> None:
+        """解析 Amazon EventStream 二进制流并转换为 Anthropic SSE。"""
         buf = b""
         got_message_stop = False
-        try:
+        exception_payload = None
+
+        while True:
+            chunk = resp.read(4096)
+            if not chunk:
+                break
+            buf += chunk
+
             while True:
-                chunk = resp.read(4096)
-                if not chunk:
+                result = self._parse_eventstream_message(buf)
+                if result is None:
                     break
-                buf += chunk
-                while b"\n" in buf:
-                    line, buf = buf.split(b"\n", 1)
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        envelope = json.loads(line)
-                    except (json.JSONDecodeError, ValueError):
-                        if config.VERBOSE:
-                            log(f"  [cowork] 跳过无效行: {line[:100]}")
-                        continue
-                    b64 = envelope.get("chunk", {}).get("bytes", "")
-                    if not b64:
-                        continue
-                    try:
-                        event_json = base64.b64decode(b64).decode("utf-8")
-                    except Exception:
-                        continue
-                    try:
-                        event = json.loads(event_json)
-                        event_type = event.get("type", "")
-                    except (json.JSONDecodeError, ValueError):
-                        if config.VERBOSE:
-                            log(f"  [cowork] 跳过无效 event: {event_json[:100]}")
-                        continue
-                    if event_type == "message_stop":
-                        got_message_stop = True
-                    sse_line = f"event: {event_type}\ndata: {event_json}\n\n".encode("utf-8")
-                    handler.wfile.write(sse_line)
-                    handler.wfile.flush()
-        except Exception as e:
-            log(f"  [cowork] 流读取异常: {e}")
+                event_type, payload, is_exception, consumed = result
+                buf = buf[consumed:]
+
+                if is_exception:
+                    exception_payload = payload
+                    log(f"  [cowork] EventStream exception: {payload[:200]}")
+                    continue
+
+                if event_type != "chunk":
+                    continue
+
+                try:
+                    envelope = json.loads(payload)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+
+                b64 = envelope.get("chunk", {}).get("bytes", "")
+                if not b64:
+                    b64 = envelope.get("bytes", "")
+                if not b64:
+                    continue
+                if not b64:
+                    continue
+
+                try:
+                    event_json = base64.b64decode(b64).decode("utf-8")
+                except Exception:
+                    continue
+
+                try:
+                    event = json.loads(event_json)
+                    etype = event.get("type", "")
+                except (json.JSONDecodeError, ValueError):
+                    continue
+
+                if etype == "message_stop":
+                    got_message_stop = True
+                sse_line = f"event: {etype}\ndata: {event_json}\n\n".encode("utf-8")
+                handler.wfile.write(sse_line)
+                handler.wfile.flush()
+
+        if exception_payload:
+            try:
+                err = json.loads(exception_payload)
+                err_msg = err.get("message", "Bedrock streaming error")
+            except Exception:
+                err_msg = exception_payload.decode("utf-8", errors="replace")[:200]
+            handler.wfile.write(
+                f'event: error\ndata: {json.dumps({"type": "error", "error": {"type": "api_error", "message": err_msg}})}\n\n'.encode()
+            )
+            handler.wfile.flush()
+            return
 
         if not got_message_stop:
-            handler.wfile.write(b"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
+            handler.wfile.write(b'event: message_stop\ndata: {"type":"message_stop"}\n\n')
+            handler.wfile.flush()
+
+    def _forward_ndjson_stream(self, handler, resp) -> None:
+        """旧版 NDJSON 流（每行一个 JSON 对象）。"""
+        buf = b""
+        got_message_stop = False
+
+        while True:
+            chunk = resp.read(4096)
+            if not chunk:
+                break
+            buf += chunk
+            while b"\n" in buf:
+                line, buf = buf.split(b"\n", 1)
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    envelope = json.loads(line)
+                except (json.JSONDecodeError, ValueError):
+                    if config.VERBOSE:
+                        log(f"  [cowork] 跳过无效行: {line[:100]}")
+                    continue
+                b64 = envelope.get("chunk", {}).get("bytes", "")
+                if not b64:
+                    b64 = envelope.get("bytes", "")
+                if not b64:
+                    continue
+                if not b64:
+                    continue
+                try:
+                    event_json = base64.b64decode(b64).decode("utf-8")
+                except Exception:
+                    continue
+                try:
+                    event = json.loads(event_json)
+                    event_type = event.get("type", "")
+                except (json.JSONDecodeError, ValueError):
+                    if config.VERBOSE:
+                        log(f"  [cowork] 跳过无效 event: {event_json[:100]}")
+                    continue
+                if event_type == "message_stop":
+                    got_message_stop = True
+                sse_line = f"event: {event_type}\ndata: {event_json}\n\n".encode("utf-8")
+                handler.wfile.write(sse_line)
+                handler.wfile.flush()
+
+        if not got_message_stop:
+            handler.wfile.write(b'event: message_stop\ndata: {"type":"message_stop"}\n\n')
             handler.wfile.flush()
