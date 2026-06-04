@@ -240,7 +240,7 @@ RUN pip3 install uv && \
     kimi --version
 
 # =============================================================================
-# Stage 2: Final image with SSH and code-server
+# Stage 2: Final image with SSH
 # This stage adds services that may change more frequently
 # =============================================================================
 FROM base AS devbox
@@ -300,8 +300,8 @@ RUN if [ "${DEV_USER}" != "root" ]; then \
       fi; \
     fi
 
-# Expose code-server port
-EXPOSE 8080 22
+# Expose SSH port
+EXPOSE 22
 
 # =============================================================================
 # Stage 3: Xiaohongshu-focused development image

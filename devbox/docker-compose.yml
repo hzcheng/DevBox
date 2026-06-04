@@ -9,8 +9,6 @@ services:
       args:
         USE_CN_MIRROR: ${USE_CN_MIRROR:-false}
         TARGETARCH_OVERRIDE: ${ARCH:-}
-        CODE_SERVER_VERSION: ${CODE_SERVER_VERSION:-latest}
-        CODE_SERVER_RELEASE_BASE_URL: ${CODE_SERVER_RELEASE_BASE_URL:-https://github.com/coder/code-server/releases/download}
         http_proxy: ${BUILD_PROXY}
         https_proxy: ${BUILD_PROXY}
         all_proxy: ${BUILD_PROXY}
@@ -41,9 +39,6 @@ services:
       - ${DEV_PROJECTS:-dev-projects}:${DEV_HOME:-/root}/projects
       - ..:${DEV_HOME:-/root}/projects/DevBox:cached
       - ${CODEWIZ_AUTH_JSON_PATH:-/home/deploy/.local/share/codewiz/auth.json}:${DEV_HOME:-/root}/.local/share/codewiz/auth.json:ro
-      - ./config/code-server/User/keybindings.json:${DEV_HOME:-/root}/.local/share/code-server/User/keybindings.json:cached
-      - ./config/code-server/User/settings.json:${DEV_HOME:-/root}/.local/share/code-server/User/settings.json:cached
-      - ./config/code-server/User/projects.json:${DEV_HOME:-/root}/.local/share/code-server/User/globalStorage/alefragnani.project-manager/projects.json:cached
     environment:
       - TZ=Asia/Shanghai
       - LANG=zh_CN.UTF-8
@@ -58,16 +53,7 @@ services:
       - HTTPS_PROXY=${RUNTIME_PROXY}
       - no_proxy=${NO_PROXY}
       - NO_PROXY=${NO_PROXY}
-      - CODE_SERVER_VERSION=${CODE_SERVER_VERSION:-latest}
-      - CODE_SERVER_RELEASE_BASE_URL=${CODE_SERVER_RELEASE_BASE_URL:-https://github.com/coder/code-server/releases/download}
-      - CODE_SERVER_AUTO_UPDATE=${CODE_SERVER_AUTO_UPDATE:-true}
-      - CODE_SERVER_UPDATE_INTERVAL_SECONDS=${CODE_SERVER_UPDATE_INTERVAL_SECONDS:-86400}
-      - CODE_SERVER_UPDATE_INITIAL_DELAY_SECONDS=${CODE_SERVER_UPDATE_INITIAL_DELAY_SECONDS:-300}
-      - CODE_SERVER_AUTH=${CODE_SERVER_AUTH:-password}
-      - CODE_SERVER_PASSWORD=${CODE_SERVER_PASSWORD:-devbox}
       - SSH_PUBLIC_KEY=${SSH_PUBLIC_KEY}
-      - COPILOT_VERSION=${COPILOT_VERSION:-latest}
-      - COPILOT_CHAT_VERSION=${COPILOT_CHAT_VERSION:-latest}
       # DeepSeek
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - DEEPSEEK_API_URL=${DEEPSEEK_API_URL:-https://api.deepseek.com/anthropic}
@@ -96,7 +82,6 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "${CODE_SERVER_PORT:-8080}:8080"
       - "${SSH_PORT:-2222}:22"
 
 volumes:
