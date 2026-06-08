@@ -38,7 +38,7 @@ services:
       - ${DEV_ROOT:-dev-root}:${DEV_HOME:-/root}
       - ${DEV_PROJECTS:-dev-projects}:${DEV_HOME:-/root}/projects
       - ..:${DEV_HOME:-/root}/projects/DevBox:cached
-      - ${CODEWIZ_AUTH_JSON_PATH:-/home/deploy/.local/share/codewiz/auth.json}:${DEV_HOME:-/root}/.local/share/codewiz/auth.json:ro
+      - ${CODEWIZ_CONFIG_DIR:-/home/deploy/.local/share/codewiz}:${DEV_HOME:-/root}/.local/share/codewiz
     environment:
       - TZ=Asia/Shanghai
       - LANG=zh_CN.UTF-8
