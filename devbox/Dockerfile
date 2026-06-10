@@ -414,3 +414,11 @@ RUN sed -i 's/\r$//' /usr/local/lib/codewiz-proxy.py \
 COPY devbox/config/cc-switch/providers-patch.sql /usr/local/share/cc-switch-providers.sql
 
 RUN apt-get update && apt-get install -y --no-install-recommends libopenblas-dev libaio-dev && rm -rf /var/lib/apt/lists/*
+
+# Install codewiz
+RUN npm config set @xhs:registry https://artifactory.devops.xiaohongshu.com/artifactory/api/npm/npm-public/ \
+    && npm config set fetch-retries 5 \
+    && npm config set fetch-retry-mintimeout 10000 \
+    && npm config set fetch-retry-maxtimeout 120000 \
+    && npm config get @xhs:registry \
+    && npm install -g @xhs/codewiz@latest @xhs/xhs-login-cli
