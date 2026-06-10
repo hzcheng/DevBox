@@ -280,6 +280,19 @@ ARG DEV_HOME=/root
 ARG DEV_UID=0
 ARG DEV_GID=0
 ARG DEV_GRANT_SUDO=false
+
+# Remove the pre-installed 'vscode' user from the MS devcontainer base image
+# when it would collide with the desired DEV_USER UID/GID. Otherwise Linux
+# resolves UID 1000 back to 'vscode' and VS Code appears to run as the wrong user.
+RUN if [ "${DEV_USER}" != "root" ] && [ "${DEV_USER}" != "vscode" ]; then \
+      if id -u vscode >/dev/null 2>&1 && \
+         [ -n "${DEV_UID}" ] && [ "${DEV_UID}" != "0" ] && \
+         [ "$(id -u vscode)" = "${DEV_UID}" ]; then \
+        userdel --remove --force vscode 2>/dev/null || true; \
+        groupdel vscode 2>/dev/null || true; \
+      fi; \
+    fi
+
 RUN if [ "${DEV_USER}" != "root" ]; then \
       if [ -n "${DEV_GID}" ] && [ "${DEV_GID}" != "0" ]; then \
         groupadd --gid "${DEV_GID}" --non-unique "${DEV_USER}" 2>/dev/null || groupadd "${DEV_USER}" 2>/dev/null || true; \
@@ -400,4 +413,4 @@ RUN sed -i 's/\r$//' /usr/local/lib/codewiz-proxy.py \
 
 COPY devbox/config/cc-switch/providers-patch.sql /usr/local/share/cc-switch-providers.sql
 
-RUN sudo apt install -y libopenblas-dev libaio-dev
+RUN apt-get update && apt-get install -y --no-install-recommends libopenblas-dev libaio-dev && rm -rf /var/lib/apt/lists/*

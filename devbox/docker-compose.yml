@@ -34,7 +34,6 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock # for docker-in-docker
       - ${HOST_SSH_DIR:-~/.ssh}:${DEV_HOME:-/root}/.ssh:ro # mount ssh
-      - /data/work/mnt:/mnt
       - ${DEV_ROOT:-dev-root}:${DEV_HOME:-/root}
       - ${DEV_PROJECTS:-dev-projects}:${DEV_HOME:-/root}/projects
       - ..:${DEV_HOME:-/root}/projects/DevBox:cached
