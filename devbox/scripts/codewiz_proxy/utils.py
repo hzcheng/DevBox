@@ -66,6 +66,71 @@ def _strip_cache_control_scope(obj) -> None:
             _strip_cache_control_scope(item)
 
 
+def _system_blocks_from_message(msg: dict) -> list[dict]:
+    """把一条 role=system 的消息内容转成 Anthropic top-level system 的 content blocks 列表。"""
+    content = msg.get("content")
+    blocks: list[dict] = []
+    if isinstance(content, str):
+        if content:
+            blocks.append({"type": "text", "text": content})
+    elif isinstance(content, list):
+        for part in content:
+            if isinstance(part, dict):
+                blocks.append(part)
+            elif isinstance(part, str):
+                blocks.append({"type": "text", "text": part})
+    return blocks
+
+
+def _ensure_system_list(body_json: dict) -> list:
+    """确保 body_json['system'] 是 content blocks 列表；不存在则创建并返回。"""
+    system = body_json.get("system")
+    if isinstance(system, list):
+        return system
+    if isinstance(system, str):
+        new_system: list[dict] = [{"type": "text", "text": system}] if system else []
+        body_json["system"] = new_system
+        return new_system
+    new_system = []
+    body_json["system"] = new_system
+    return new_system
+
+
+def extract_system_messages(body_json: dict) -> list[str]:
+    """把 messages 数组里的 system 角色消息提取到顶层 system 字段，并返回日志。
+
+    Bedrock Claude adapter 不允许 role='system' 出现在 messages 数组中，要求使用顶层
+    `system` 参数。Claude Code v2.1+ 有时会把 system 内容作为普通消息发送，需要归一化。
+    """
+    logs = []
+    messages = body_json.get("messages")
+    if not isinstance(messages, list):
+        return logs
+
+    collected_blocks: list[dict] = []
+    remaining_messages: list[dict] = []
+    for msg in messages:
+        if isinstance(msg, dict) and msg.get("role") == "system":
+            blocks = _system_blocks_from_message(msg)
+            if blocks:
+                collected_blocks.extend(blocks)
+                logs.append("extracted system message -> top-level system")
+            else:
+                remaining_messages.append(msg)
+        else:
+            remaining_messages.append(msg)
+
+    if collected_blocks:
+        system_list = _ensure_system_list(body_json)
+        # 保持 system 消息原来的顺序，放在已有顶层 system 前面
+        body_json["system"] = collected_blocks + system_list
+        body_json["messages"] = remaining_messages
+        if not remaining_messages:
+            del body_json["messages"]
+
+    return logs
+
+
 def strip_thinking_blocks(body_json: dict) -> list[str]:
     """从 messages 历史中移除所有 thinking/redacted_thinking content blocks，返回日志。
     Bedrock 的 thinking block signature 与 session 绑定，resume 时历史里的 signature 全部失效。"""
@@ -161,6 +226,10 @@ def rewrite_body(body_bytes: bytes, is_openai: bool = False) -> RewriteResult:
     logs.extend(billing_logs)
     if billing_val:
         extra_headers["x-anthropic-billing-header"] = billing_val
+
+    # Anthropic/Bedrock 要求 system 只能出现在顶层，不能是 messages 中的角色
+    if not is_openai:
+        logs.extend(extract_system_messages(body_json))
 
     _strip_cache_control_scope(body_json)
 
