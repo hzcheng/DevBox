@@ -272,6 +272,10 @@ RUN sed -i 's/\r$//' /etc/profile.d/devbox-prompt.sh && chmod 644 /etc/profile.d
 COPY devbox/scripts/start-services.sh /usr/local/bin/start-services.sh
 RUN sed -i 's/\r$//' /usr/local/bin/start-services.sh && chmod +x /usr/local/bin/start-services.sh
 
+# Reap abandoned VS Code Dev Containers bridge helpers without stopping the container
+COPY devbox/scripts/vscode-bridge-reaper.sh /usr/local/bin/vscode-bridge-reaper
+RUN sed -i 's/\r$//' /usr/local/bin/vscode-bridge-reaper && chmod 0755 /usr/local/bin/vscode-bridge-reaper
+
 # Create non-root dev user if DEV_USER != root.
 # docker group is NOT created here — the socket GID varies per host and is
 # handled dynamically at container startup in setup_dev_user().

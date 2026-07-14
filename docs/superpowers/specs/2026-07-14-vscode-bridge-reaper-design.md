@@ -81,6 +81,26 @@ enabled and show its interval and age threshold.
 The feature is enabled by default and can be disabled with
 `VSCODE_BRIDGE_REAPER_ENABLED=false` in Compose environment configuration.
 
+The installed script must be owned by root with mode `0755`. Bash needs read
+permission as well as execute permission for a script, so a symbolic
+`chmod +x` is not sufficient when the source file was created with a restrictive
+mode. The repository copy will also use mode `0755` so local tests exercise the
+same access model as the image.
+
+### Persistent ownership initialization
+
+The development home directory is a persistent volume, while `/var/lib` belongs
+to the replaceable container filesystem. The first-start ownership marker will
+therefore live under `${DEV_HOME}/.cache/devbox/` and include the development
+user's numeric UID and GID. After a successful recursive ownership repair, the
+entrypoint creates that marker.
+
+On later container recreations with the same persistent home volume and the
+same UID/GID, the marker remains and the entrypoint only verifies the home
+directory itself instead of recursively traversing it. A new volume or a UID/GID
+change produces a different or missing marker and intentionally triggers one
+new recursive repair.
+
 ## Logging and failure behavior
 
 Each scan logs these counters: bridges examined, active bridges protected,
@@ -98,6 +118,11 @@ Shell tests will cover:
 - A bridge with unreadable or missing environment metadata is protected.
 - `--dry-run` reports a candidate but does not terminate it.
 - `--once` completes without leaving a background loop.
+- The repository and image copies of the reaper are readable and executable by
+  the development user (`0755`).
+- The ownership marker survives container recreation because it is stored in
+  the persistent home volume.
+- The marker is keyed by UID/GID, so a changed identity triggers reinitialization.
 
 Static verification will include `bash -n` for the reaper and entrypoint, plus
 `docker compose config` for the Compose changes.

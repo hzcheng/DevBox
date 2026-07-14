@@ -22,6 +22,14 @@ log_error() {
     echo "[ERROR] $(date '+%Y-%m-%d %H:%M:%S') - $*" >&2
 }
 
+# Return the persistent marker for a specific development-user identity.
+dev_home_ownership_marker() {
+    local uid=$1
+    local gid=$2
+    printf '%s/.cache/devbox/ownership-initialized-%s-%s\n' \
+        "${DEV_HOME}" "${uid}" "${gid}"
+}
+
 # ============================================
 # 开发用户初始化
 # ============================================
@@ -33,15 +41,20 @@ setup_dev_user() {
     # Ensure home directory exists (volume may be empty on first run)
     mkdir -p "${DEV_HOME}"
 
-    # First-boot only: recursively fix ownership of pre-existing root-owned files.
-    # The sentinel lives outside the volume so it survives image rebuilds but not
-    # volume resets, which is exactly when a full chown-R is needed again.
-    local sentinel="/var/lib/devbox-initialized-${DEV_USER}"
+    # First-volume-boot only: recursively fix ownership of pre-existing root-owned
+    # files. The UID/GID-keyed sentinel lives in DEV_HOME so it survives container
+    # recreation, while a volume reset or identity change triggers initialization.
+    local dev_uid dev_gid sentinel
+    dev_uid=$(id -u "${DEV_USER}")
+    dev_gid=$(id -g "${DEV_USER}")
+    sentinel=$(dev_home_ownership_marker "${dev_uid}" "${dev_gid}")
     if [ ! -f "${sentinel}" ]; then
         log_info "First boot: fixing ownership of ${DEV_HOME} recursively (this may take a moment)..."
         # Use find to skip read-only bind mounts (e.g. ~/.ssh mounted with :ro).
         find "${DEV_HOME}" -mount -exec chown "${DEV_USER}:${DEV_USER}" {} + 2>/dev/null || true
+        install -d -m 0755 -o "${DEV_USER}" -g "${DEV_USER}" "$(dirname "${sentinel}")"
         touch "${sentinel}"
+        chown "${DEV_USER}:${DEV_USER}" "${sentinel}"
         log_info "Ownership fixed. Subsequent boots will skip this step."
     else
         # Subsequent boots: ensure just the top-level home dir has correct ownership.
@@ -217,6 +230,31 @@ setup_tmux_plugins() {
 }
 
 # ============================================
+# VS Code Dev Containers bridge 清理
+# ============================================
+setup_vscode_bridge_reaper() {
+    case "${VSCODE_BRIDGE_REAPER_ENABLED:-true}" in
+        false|FALSE|0|no|NO|off|OFF)
+            log_info "VS Code bridge reaper disabled"
+            return 0
+            ;;
+    esac
+
+    local reaper=/usr/local/bin/vscode-bridge-reaper
+    if [ ! -x "${reaper}" ]; then
+        log_warn "VS Code bridge reaper not found at ${reaper}, skipping"
+        return 0
+    fi
+
+    log_info "Starting VS Code bridge reaper (interval=${VSCODE_BRIDGE_REAPER_INTERVAL_SECONDS:-600}s, min_age=${VSCODE_BRIDGE_REAPER_MIN_AGE_SECONDS:-1800}s)"
+    if [ "${DEV_USER}" != "root" ]; then
+        HOME="${DEV_HOME}" gosu "${DEV_USER}" "${reaper}" &
+    else
+        "${reaper}" &
+    fi
+}
+
+# ============================================
 # SSH 服务管理
 # ============================================
 setup_ssh() {
@@ -299,6 +337,9 @@ main() {
 
     # 0.6 安装 tmux 插件（运行时下载，无需重建镜像）
     setup_tmux_plugins
+
+    # 0.7 定时清理失联的 VS Code Dev Containers bridge helper
+    setup_vscode_bridge_reaper
 
     # 1. 启动 SSH 服务
     setup_ssh

@@ -75,6 +75,10 @@ services:
       - DEV_USER=${DEV_USER:-root}
       - DEV_HOME=${DEV_HOME:-/root}
       - DEV_GRANT_SUDO=${DEV_GRANT_SUDO:-false}
+      # VS Code Dev Containers bridge cleanup
+      - VSCODE_BRIDGE_REAPER_ENABLED=${VSCODE_BRIDGE_REAPER_ENABLED:-true}
+      - VSCODE_BRIDGE_REAPER_INTERVAL_SECONDS=${VSCODE_BRIDGE_REAPER_INTERVAL_SECONDS:-600}
+      - VSCODE_BRIDGE_REAPER_MIN_AGE_SECONDS=${VSCODE_BRIDGE_REAPER_MIN_AGE_SECONDS:-1800}
     command: /usr/local/bin/start-services.sh
     security_opt:
       - seccomp:unconfined
