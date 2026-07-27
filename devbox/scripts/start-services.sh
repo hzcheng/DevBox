@@ -116,6 +116,89 @@ setup_dev_user() {
 }
 
 # ============================================
+# Kimi CLI CodeWiz provider 配置
+# ============================================
+setup_kimi_codewiz() {
+    local python_bin="${KIMI_CONFIGURE_PYTHON:-/usr/local/share/uv-tools/kimi-cli/bin/python}"
+    local -a command
+
+    if [ ! -x "${python_bin}" ]; then
+        log_warn "Kimi Python not found at ${python_bin}, skipping Kimi CodeWiz config"
+        return 0
+    fi
+
+    if [ "${DEV_USER}" != "root" ]; then
+        command=(env HOME="${DEV_HOME}" gosu "${DEV_USER}" "${python_bin}" - "${DEV_HOME}")
+    else
+        command=(env HOME="${DEV_HOME}" "${python_bin}" - "${DEV_HOME}")
+    fi
+
+    if "${command[@]}" <<'PY'
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+import tomlkit
+
+
+home = Path(sys.argv[1])
+config_dir = home / ".kimi"
+config_path = config_dir / "config.toml"
+config_dir.mkdir(parents=True, exist_ok=True)
+
+if config_path.exists():
+    document = tomlkit.parse(config_path.read_text(encoding="utf-8"))
+else:
+    document = tomlkit.document()
+
+document["default_model"] = "codewiz/kimi-k3"
+document["default_thinking"] = True
+
+providers = document.get("providers")
+if not isinstance(providers, dict):
+    providers = tomlkit.table()
+    document["providers"] = providers
+providers["codewiz"] = {
+    "type": "kimi",
+    "base_url": "http://127.0.0.1:8089/v1",
+    "api_key": "dummy",
+}
+
+models = document.get("models")
+if not isinstance(models, dict):
+    models = tomlkit.table()
+    document["models"] = models
+models["codewiz/kimi-k3"] = {
+    "provider": "codewiz",
+    "model": "kimi-k3-ali",
+    "max_context_size": 1000000,
+    "capabilities": ["thinking", "image_in"],
+}
+
+fd, temp_name = tempfile.mkstemp(prefix=".config.toml.", dir=config_dir)
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as temp_file:
+        temp_file.write(tomlkit.dumps(document))
+        temp_file.flush()
+        os.fsync(temp_file.fileno())
+    os.chmod(temp_name, 0o600)
+    os.replace(temp_name, config_path)
+except BaseException:
+    try:
+        os.unlink(temp_name)
+    except FileNotFoundError:
+        pass
+    raise
+PY
+    then
+        log_info "Kimi CLI configured for CodeWiz K3"
+    else
+        log_warn "Failed to configure Kimi CLI for CodeWiz K3; existing config preserved"
+    fi
+}
+
+# ============================================
 # 旧环境变量兼容性警告
 # ============================================
 _warn_deprecated_env_vars() {
@@ -328,6 +411,9 @@ main() {
 
     # 0. 初始化开发用户（必须最先，其他函数依赖 DEV_HOME 目录已就绪）
     setup_dev_user
+
+    # 0.2 配置 Kimi CLI 使用本地 CodeWiz proxy 的 K3 模型
+    setup_kimi_codewiz
 
     # 0.4 旧环境变量兼容性警告
     _warn_deprecated_env_vars
