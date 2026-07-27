@@ -9,7 +9,7 @@ TARGET_BASE_URL = os.environ.get(
 )
 OPENAI_TARGET_BASE_URL = os.environ.get(
     "CODEWIZ_OPENAI_TARGET_URL",
-    "https://codewiz.devops.xiaohongshu.com/llmratelimit/v3/openai/v1",
+    "https://codewizllmproxy.devops.xiaohongshu.com/llmadapterproxy/v3/openai",
 )
 PORT = int(os.environ.get("CODEWIZ_PROXY_PORT", "8089"))
 
