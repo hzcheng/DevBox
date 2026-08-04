@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Configure Kimi CLI to use CodeWiz's `kimi-k3-ali` model by default through DevBox's existing local CodeWiz proxy.
+**Goal:** Configure Kimi CLI to use CodeWiz's `kimi-k3` model by default through DevBox's existing local CodeWiz proxy.
 
 **Architecture:** Add K3 to the proxy's OpenAI-compatible model registry, then merge a DevBox-owned provider and model alias into `${DEV_HOME}/.kimi/config.toml` during container startup. The Kimi config points at `127.0.0.1:8089`, so the proxy—not Kimi's config—owns all CodeWiz SSO credential handling.
 
@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- The upstream model identifier is exactly `kimi-k3-ali`.
+- The upstream model identifier is exactly `kimi-k3`.
 - The Kimi model alias is exactly `codewiz/kimi-k3`.
 - The Kimi provider base URL is exactly `http://127.0.0.1:8089/v1`.
 - Do not copy SSO tokens, user email addresses, or the internal compatibility key into Kimi's config.
@@ -37,7 +37,7 @@
 
 **Interfaces:**
 - Consumes: existing `OPENAI_COMPAT_MODELS` and `PREFIX_MODEL_ALIAS` registries.
-- Produces: `kimi-k3-ali` compatibility classification and the `kimi3` alias used by all proxy paths.
+- Produces: `kimi-k3` compatibility classification and the `kimi3` alias used by all proxy paths.
 
 - [ ] **Step 1: Write the failing registry test**
 
@@ -59,10 +59,10 @@ from codewiz_proxy import config  # noqa: E402
 
 class KimiK3ProxyConfigTest(unittest.TestCase):
     def test_kimi_k3_is_openai_compatible(self) -> None:
-        self.assertIn("kimi-k3-ali", config.OPENAI_COMPAT_MODELS)
+        self.assertIn("kimi-k3", config.OPENAI_COMPAT_MODELS)
 
     def test_kimi3_alias_uses_codewiz_model_id(self) -> None:
-        self.assertEqual(config.PREFIX_MODEL_ALIAS["kimi3"], "kimi-k3-ali")
+        self.assertEqual(config.PREFIX_MODEL_ALIAS["kimi3"], "kimi-k3")
 
 
 if __name__ == "__main__":
@@ -77,7 +77,7 @@ Run:
 python3 devbox/tests/test-codewiz-kimi-k3.py
 ```
 
-Expected: one assertion failure because `kimi-k3-ali` is absent and one
+Expected: one assertion failure because `kimi-k3` is absent and one
 `KeyError` because `kimi3` is absent.
 
 - [ ] **Step 3: Add the K3 model and alias**
@@ -86,7 +86,7 @@ Add the model beside the existing Kimi entries in `OPENAI_COMPAT_MODELS`:
 
 ```python
     "kimi-k2.6",
-    "kimi-k3-ali",
+    "kimi-k3",
     "dots.llm2.inst",
 ```
 
@@ -94,7 +94,7 @@ Add the alias beside the existing Kimi aliases in `PREFIX_MODEL_ALIAS`:
 
 ```python
     "kimi26":           "kimi-k2.6",
-    "kimi3":            "kimi-k3-ali",
+    "kimi3":            "kimi-k3",
     "dots":             "dots.llm2.inst",
 ```
 
@@ -220,7 +220,7 @@ assert config["providers"]["codewiz"] == {
 assert config["models"]["keep/default"]["model"] == "keep-model"
 assert config["models"]["codewiz/kimi-k3"] == {
     "provider": "codewiz",
-    "model": "kimi-k3-ali",
+    "model": "kimi-k3",
     "max_context_size": 1000000,
     "capabilities": ["thinking", "image_in"],
 }
@@ -332,7 +332,7 @@ if not isinstance(models, dict):
     document["models"] = models
 models["codewiz/kimi-k3"] = {
     "provider": "codewiz",
-    "model": "kimi-k3-ali",
+    "model": "kimi-k3",
     "max_context_size": 1000000,
     "capabilities": ["thinking", "image_in"],
 }
@@ -475,7 +475,7 @@ config = tomlkit.parse(Path.home().joinpath(".kimi/config.toml").read_text())
 assert config["default_model"] == "codewiz/kimi-k3"
 assert config["providers"]["codewiz"]["base_url"] == "http://127.0.0.1:8089/v1"
 assert config["providers"]["codewiz"]["api_key"] == "dummy"
-assert config["models"]["codewiz/kimi-k3"]["model"] == "kimi-k3-ali"
+assert config["models"]["codewiz/kimi-k3"]["model"] == "kimi-k3"
 print("PASS: container Kimi config uses local CodeWiz K3")
 PY
 ```

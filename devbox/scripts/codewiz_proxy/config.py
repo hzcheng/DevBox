@@ -90,7 +90,7 @@ OPENAI_COMPAT_MODELS: frozenset[str] = frozenset({
     "kimi-k2.5",
     "kimi-k2.5-qs",
     "kimi-k2.6",
-    "kimi-k3-ali",
+    "kimi-k3",
     "dots.llm2.inst",
 })
 
@@ -135,7 +135,7 @@ PREFIX_MODEL_ALIAS: dict[str, str] = {
     "kimi25":           "kimi-k2.5",
     "kimi25qs":         "kimi-k2.5-qs",
     "kimi26":           "kimi-k2.6",
-    "kimi3":            "kimi-k3-ali",
+    "kimi3":            "kimi-k3",
     "dots":             "dots.llm2.inst",
     # 让 provider 自决
     "default":          "",

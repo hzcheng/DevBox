@@ -73,7 +73,7 @@ assert config["providers"]["codewiz"] == {
 assert config["models"]["keep/default"]["model"] == "keep-model"
 assert config["models"]["codewiz/kimi-k3"] == {
     "provider": "codewiz",
-    "model": "kimi-k3-ali",
+    "model": "kimi-k3",
     "max_context_size": 1000000,
     "capabilities": ["thinking", "image_in"],
 }

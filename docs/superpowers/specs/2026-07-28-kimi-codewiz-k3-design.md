@@ -13,7 +13,7 @@ the current CodeWiz login from `~/.local/share/codewiz/auth.json`, attach the
 required internal authentication headers, and forward requests to the CodeWiz
 OpenAI-compatible gateway.
 
-The model identifier sent upstream is `kimi-k3-ali`. The local Kimi model alias
+The model identifier sent upstream is `kimi-k3`. The local Kimi model alias
 is `codewiz/kimi-k3`.
 
 ## Configuration
@@ -32,7 +32,7 @@ api_key = "dummy"
 
 [models."codewiz/kimi-k3"]
 provider = "codewiz"
-model = "kimi-k3-ali"
+model = "kimi-k3"
 max_context_size = 1000000
 capabilities = ["thinking", "image_in"]
 ```
@@ -44,7 +44,7 @@ owned by `DEV_USER`.
 
 ## Proxy Changes
 
-The CodeWiz proxy will recognize `kimi-k3-ali` as an OpenAI-compatible model.
+The CodeWiz proxy will recognize `kimi-k3` as an OpenAI-compatible model.
 This ensures the proxy:
 
 - adds the internal `api-key` header;
@@ -52,7 +52,7 @@ This ensures the proxy:
 - routes Kimi CLI's `/v1/chat/completions` request through the existing OpenAI
   gateway path.
 
-A `kimi3` prefix alias will map to `kimi-k3-ali` for consistency with the
+A `kimi3` prefix alias will map to `kimi-k3` for consistency with the
 existing Kimi aliases.
 
 ## Credentials and Security

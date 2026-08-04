@@ -171,7 +171,7 @@ if not isinstance(models, dict):
     document["models"] = models
 models["codewiz/kimi-k3"] = {
     "provider": "codewiz",
-    "model": "kimi-k3-ali",
+    "model": "kimi-k3",
     "max_context_size": 1000000,
     "capabilities": ["thinking", "image_in"],
 }
