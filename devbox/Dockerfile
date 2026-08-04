@@ -84,6 +84,10 @@ RUN EFFECTIVE_ARCH="${TARGETARCH_OVERRIDE:-${TARGETARCH}}" && \
     echo "Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")" >> /etc/apt/sources.list.d/docker.sources && \
     echo "Components: stable" >> /etc/apt/sources.list.d/docker.sources && \
     echo "Signed-By: /etc/apt/keyrings/docker.asc" >> /etc/apt/sources.list.d/docker.sources && \
+    # Add GitHub CLI apt repository
+    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /etc/apt/keyrings/githubcli-archive-keyring.gpg && \
+    chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg && \
+    echo "deb [arch=${EFFECTIVE_ARCH} signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list && \
     # Skip Bazel apt repo in CN mirror mode (will use bazelisk instead)
     if [ "${EFFECTIVE_ARCH}" = "amd64" ] && [ "${USE_CN_MIRROR}" != "true" ]; then \
       curl -fsSL https://bazel.build/bazel-release.pub.gpg | gpg --dearmor > /etc/apt/keyrings/bazel-archive-keyring.gpg && \
@@ -95,7 +99,7 @@ RUN EFFECTIVE_ARCH="${TARGETARCH_OVERRIDE:-${TARGETARCH}}" && \
 # Install packages and Chinese locale
 RUN EFFECTIVE_ARCH="${TARGETARCH_OVERRIDE:-${TARGETARCH}}" && \
     if [ -z "${EFFECTIVE_ARCH}" ]; then EFFECTIVE_ARCH="$(dpkg --print-architecture)"; fi && \
-    PACKAGES="tree vim tmux python3-pip tldr patchelf \
+    PACKAGES="tree vim tmux gh python3-pip tldr patchelf \
 docker-ce-cli docker-compose-plugin docker-buildx-plugin \
 libjansson-dev libsnappy-dev libyaml-cpp-dev \
 liblzma-dev libz-dev pkg-config libssl-dev graphviz \
